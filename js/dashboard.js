@@ -64,10 +64,10 @@ function setupUIForRole() {
 // Charger les matières premières
 async function loadMaterials() {
     let query = supabase
-        .from('raw_materials')
+        .from('materials')
         .select(`
             *,
-            profiles:client_id(full_name, company, email)
+            profiles:client_id(full_name, company_name, email)
         `)
         .order('reception_date', { ascending: false });
     
@@ -122,7 +122,7 @@ function displayMaterials(materials) {
                     ` : ''}
                     ${userProfile.role === 'admin' && material.profiles ? `
                         <div class="material-detail">
-                            <strong>Client:</strong> ${material.profiles.company || material.profiles.full_name}
+                            <strong>Client:</strong> ${material.profiles.company_name || material.profiles.full_name}
                         </div>
                     ` : ''}
                 </div>
@@ -170,7 +170,7 @@ async function updateStats() {
 async function loadClients() {
     const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, company, email')
+        .select('id, full_name, company_name, email')
         .eq('role', 'client')
         .order('full_name');
     
@@ -185,7 +185,7 @@ async function loadClients() {
     data.forEach(client => {
         const option = document.createElement('option');
         option.value = client.id;
-        option.textContent = `${client.company || client.full_name} (${client.email})`;
+        option.textContent = `${client.company_name || client.full_name} (${client.email})`;
         select.appendChild(option);
     });
 }
@@ -293,7 +293,7 @@ async function handleFormSubmit(e) {
     if (materialId) {
         // Mise à jour
         result = await supabase
-            .from('raw_materials')
+            .from('materials')
             .update(materialData)
             .eq('id', materialId);
     } else {
@@ -303,7 +303,7 @@ async function handleFormSubmit(e) {
         }
         
         result = await supabase
-            .from('raw_materials')
+            .from('materials')
             .insert([materialData]);
     }
     
@@ -324,7 +324,7 @@ window.deleteMaterial = async function(id) {
     }
     
     const { error } = await supabase
-        .from('raw_materials')
+        .from('materials')
         .delete()
         .eq('id', id);
     
@@ -355,7 +355,7 @@ window.viewDetails = function(id) {
             ${userProfile.role === 'admin' && material.profiles ? `
                 <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
                     <strong>Client:</strong><br>
-                    ${material.profiles.company || material.profiles.full_name}<br>
+                    ${material.profiles.company_name || material.profiles.full_name}<br>
                     ${material.profiles.email}
                 </div>
             ` : ''}
@@ -378,7 +378,7 @@ function subscribeToChanges() {
     supabase
         .channel('materials_changes')
         .on('postgres_changes', 
-            { event: '*', schema: 'public', table: 'raw_materials' },
+            { event: '*', schema: 'public', table: 'materials' },
             async (payload) => {
                 console.log('Changement détecté:', payload);
                 await loadMaterials();
@@ -402,3 +402,4 @@ function formatDate(dateString) {
 function formatDateTime(dateString) {
     return new Date(dateString).toLocaleString('fr-FR');
 }
+
