@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connexion - Gestion de Stockage</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-box">
+            <h1>🏢 Gestion de Stockage</h1>
+            
+            <div id="loginForm" class="auth-form">
+                <h2>Connexion</h2>
+                <form id="loginFormElement">
+                    <div class="form-group">
+                        <label for="loginEmail">Email</label>
+                        <input type="email" id="loginEmail" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="loginPassword">Mot de passe</label>
+                        <input type="password" id="loginPassword" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-full">Se connecter</button>
+                </form>
+                <p class="auth-switch">
+                    Pas encore de compte ? 
+                    <a href="#" onclick="showSignup(); return false;">Créer un compte</a>
+                </p>
+            </div>
+
+            <div id="signupForm" class="auth-form" style="display: none;">
+                <h2>Créer un compte</h2>
+                <form id="signupFormElement">
+                    <div class="form-group">
+                        <label for="signupName">Nom complet</label>
+                        <input type="text" id="signupName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="signupCompany">Nom de l'entreprise</label>
+                        <input type="text" id="signupCompany">
+                    </div>
+                    <div class="form-group">
+                        <label for="signupEmail">Email</label>
+                        <input type="email" id="signupEmail" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="signupPassword">Mot de passe</label>
+                        <input type="password" id="signupPassword" required minlength="6">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-full">Créer mon compte</button>
+                </form>
+                <p class="auth-switch">
+                    Déjà un compte ? 
+                    <a href="#" onclick="showLogin(); return false;">Se connecter</a>
+                </p>
+            </div>
+
+            <div id="authMessage" class="message" style="display: none;"></div>
+        </div>
+    </div>
+
+	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script type="module" src="js/auth.js"></script>
+</body>
+</html>
