@@ -395,7 +395,9 @@ function subscribeToChanges() {
                 await updateStats();
             }
         )
-        .subscribe();
+        .subscribe((status) => {
+            console.log('Realtime status:', status); // Pour debug
+        });    
 }
 
 // Déconnexion
@@ -412,3 +414,4 @@ function formatDate(dateString) {
 function formatDateTime(dateString) {
     return new Date(dateString).toLocaleString('fr-FR');
 }
+
