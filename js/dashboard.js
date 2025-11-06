@@ -295,7 +295,8 @@ async function handleFormSubmit(e) {
         result = await supabase
             .from('materials')
             .update(materialData)
-            .eq('id', materialId);
+            .eq('id', materialId)
+            .select();
     } else {
         // Création
         if (userProfile.role === 'client') {
@@ -304,18 +305,27 @@ async function handleFormSubmit(e) {
         
         result = await supabase
             .from('materials')
-            .insert([materialData]);
+            .insert([materialData])
+            .select();
     }
     
     if (result.error) {
+        console.error('Erreur complète:', result.error);
         alert('Erreur: ' + result.error.message);
         return;
     }
     
+    console.log('Matériau enregistré:', result.data);
+    
     closeModal();
-    await loadMaterials();
-    await updateStats();
+    
+    // Attendre un peu avant de recharger
+    setTimeout(async () => {
+        await loadMaterials();
+        await updateStats();
+    }, 500);
 }
+// ← J'AI SUPPRIMÉ L'ACCOLADE EN TROP ICI
 
 // Supprimer une matière
 window.deleteMaterial = async function(id) {
@@ -402,4 +412,3 @@ function formatDate(dateString) {
 function formatDateTime(dateString) {
     return new Date(dateString).toLocaleString('fr-FR');
 }
-
