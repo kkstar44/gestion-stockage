@@ -30,7 +30,7 @@
                 <div class="stat-card">
                     <div class="stat-icon">📤</div>
                     <div class="stat-info">
-                        <h3 id="totalExited">0</h3>
+                        <h3 id="exitedItems">0</h3>
                         <p>Articles sortis</p>
                     </div>
                 </div>
@@ -55,9 +55,9 @@
                     <input type="text" id="searchInput" placeholder="Rechercher...">
                 </div>
                 <div class="filter-buttons">
-                    <button class="btn btn-filter active" data-filter="all">Tous</button>
-                    <button class="btn btn-filter" data-filter="in_stock">En stock</button>
-                    <button class="btn btn-filter" data-filter="exited">Sortis</button>
+                    <button class="btn btn-filter active" onclick="filterByStatus('all')">Tous</button>
+                    <button class="btn btn-filter" onclick="filterByStatus('in_stock')">En stock</button>
+                    <button class="btn btn-filter" onclick="filterByStatus('exited')">Sortis</button>
                 </div>
                 <button id="addMaterialBtn" class="btn btn-primary" style="display: none;">
                     ➕ Ajouter une matière
@@ -153,14 +153,11 @@
         <div class="modal-content modal-small">
             <span class="close" onclick="closeExitModal()">&times;</span>
             <h2>📤 Confirmer la sortie</h2>
-            <p id="exitMessage">Voulez-vous vraiment enregistrer la sortie de ce matériau ?</p>
-            <div class="form-group">
-                <label for="exitDate">Date de sortie *</label>
-                <input type="date" id="exitDate" required>
-            </div>
+            <p>Voulez-vous vraiment enregistrer la sortie de :</p>
+            <p style="font-weight: bold; font-size: 1.2rem; margin: 1rem 0;" id="exitMaterialName"></p>
             <div class="form-actions">
                 <button type="button" class="btn btn-secondary" onclick="closeExitModal()">Annuler</button>
-                <button type="button" class="btn btn-danger" onclick="confirmExit()">Confirmer la sortie</button>
+                <button type="button" class="btn btn-danger" onclick="performExit()">Confirmer la sortie</button>
             </div>
         </div>
     </div>
