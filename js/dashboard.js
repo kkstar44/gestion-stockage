@@ -3,8 +3,6 @@ import { supabase, checkAuth, getUserProfile } from './supabase.js';
 let currentUser = null;
 let userProfile = null;
 let allMaterials = [];
-let currentFilter = 'all';
-let materialToExit = null;
 
 // Initialisation
 init();
@@ -55,7 +53,7 @@ function setupUIForRole() {
         addBtn.style.display = 'block';
         clientsCard.style.display = 'block';
         clientSelectGroup.style.display = 'block';
-        loadClients();
+        loadClients(); // Charger la liste des clients
     } else {
         addBtn.style.display = 'none';
         clientsCard.style.display = 'none';
@@ -63,247 +61,213 @@ function setupUIForRole() {
     }
 }
 
-// Charger les matériaux
+// Charger les matières premières
 async function loadMaterials() {
-    try {
-        let query = supabase
-            .from('materials')
-            .select(`
-                *,
-                clients (
-                    company_name
-                )
-            `)
-            .order('created_at', { ascending: false });
-
-        const { data, error } = await query;
-
-        if (error) throw error;
-
-        allMaterials = data || [];
-        displayMaterials(allMaterials);
-        
-    } catch (error) {
-        console.error('Erreur:', error);
-        document.getElementById('materialsList').innerHTML = 
-            `<p class="error">Erreur de chargement: ${error.message}</p>`;
+    let query = supabase
+        .from('materials')
+        .select(`
+            *,
+            profiles:client_id(full_name, company_name, email)
+        `)
+        .order('reception_date', { ascending: false });
+    
+    // Les clients ne voient que leurs propres matières
+    if (userProfile.role === 'client') {
+        query = query.eq('client_id', currentUser.id);
     }
+    
+    const { data, error } = await query;
+    
+    if (error) {
+        console.error('Erreur chargement:', error);
+        document.getElementById('materialsList').innerHTML = 
+            '<p class="error">Erreur de chargement des données</p>';
+        return;
+    }
+    
+    allMaterials = data || [];
+    displayMaterials(allMaterials);
 }
 
-// Afficher les matériaux
+// Afficher les matières
 function displayMaterials(materials) {
     const container = document.getElementById('materialsList');
     
-    if (!materials || materials.length === 0) {
-        container.innerHTML = '<p class="no-data">Aucun matériau trouvé</p>';
+    if (materials.length === 0) {
+        container.innerHTML = '<p class="loading">Aucune matière première enregistrée</p>';
         return;
     }
-
-    // Filtrer selon le statut
-    let filteredMaterials = materials;
-    if (currentFilter === 'in_stock') {
-        filteredMaterials = materials.filter(m => !m.exit_date);
-    } else if (currentFilter === 'exited') {
-        filteredMaterials = materials.filter(m => m.exit_date);
-    }
-
-    if (filteredMaterials.length === 0) {
-        container.innerHTML = '<p class="no-data">Aucun matériau trouvé pour ce filtre</p>';
-        return;
-    }
-
-    container.innerHTML = filteredMaterials.map(material => {
-        const isAdmin = userProfile.role === 'admin';
-        const isExited = material.exit_date;
-        const clientName = material.clients?.company_name || 'N/A';
-        
-        return `
-            <div class="material-card ${isExited ? 'exited' : ''}">
-                <div class="material-header">
-                    <h3>${material.material_name}</h3>
-                    ${isExited ? '<span class="badge badge-exited">SORTI</span>' : '<span class="badge badge-stock">EN STOCK</span>'}
-                </div>
-                <div class="material-body">
-                    <p><strong>Type:</strong> ${material.material_type}</p>
-                    <p><strong>Quantité:</strong> ${material.quantity} ${material.unit}</p>
-                    <p><strong>Emplacement:</strong> ${material.storage_location}</p>
-                    <p><strong>Date réception:</strong> ${formatDate(material.reception_date)}</p>
-                    ${isAdmin ? `<p><strong>Client:</strong> ${clientName}</p>` : ''}
-                    ${material.estimated_value ? `<p><strong>Valeur:</strong> ${material.estimated_value} €</p>` : ''}
-                    ${isExited ? `<p><strong>Date sortie:</strong> ${formatDate(material.exit_date)}</p>` : ''}
-                </div>
-                <div class="material-actions">
-                    <button onclick="viewDetails('${material.id}')" class="btn btn-info btn-sm">
-                        👁️ Détails
-                    </button>
-                    ${isAdmin && !isExited ? `
-                        <button onclick="editMaterial('${material.id}')" class="btn btn-primary btn-sm">
-                            ✏️ Éditer
-                        </button>
-                        <button onclick="openExitModal('${material.id}')" class="btn btn-warning btn-sm">
-                            📤 Sortir
-                        </button>
-                        <button onclick="deleteMaterial('${material.id}')" class="btn btn-danger btn-sm">
-                            🗑️ Supprimer
-                        </button>
+    
+    container.innerHTML = materials.map(material => `
+        <div class="material-card">
+            <div class="material-info">
+                <h3>${material.material_name}</h3>
+                <div class="material-details">
+                    <div class="material-detail">
+                        <strong>Type:</strong> ${material.material_type}
+                    </div>
+                    <div class="material-detail">
+                        <strong>Quantité:</strong> ${material.quantity} ${material.unit}
+                    </div>
+                    <div class="material-detail">
+                        <strong>Emplacement:</strong> ${material.storage_location}
+                    </div>
+                    <div class="material-detail">
+                        <strong>Date:</strong> ${formatDate(material.reception_date)}
+                    </div>
+                    ${material.estimated_value ? `
+                        <div class="material-detail">
+                            <strong>Valeur:</strong> ${material.estimated_value} €
+                        </div>
                     ` : ''}
-                    ${isAdmin && isExited ? `
-                        <button onclick="cancelExit('${material.id}')" class="btn btn-secondary btn-sm">
-                            ↩️ Annuler sortie
-                        </button>
-                        <button onclick="deleteMaterial('${material.id}')" class="btn btn-danger btn-sm">
-                            🗑️ Supprimer
-                        </button>
+                    ${userProfile.role === 'admin' && material.profiles ? `
+                        <div class="material-detail">
+                            <strong>Client:</strong> ${material.profiles.company_name || material.profiles.full_name}
+                        </div>
                     ` : ''}
                 </div>
             </div>
-        `;
-    }).join('');
+            <div class="material-actions">
+                <button class="btn btn-sm btn-primary" onclick="viewDetails('${material.id}')">
+                    👁️ Détails
+                </button>
+                ${userProfile.role === 'admin' ? `
+                    <button class="btn btn-sm btn-secondary" onclick="editMaterial('${material.id}')">
+                        ✏️
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteMaterial('${material.id}')">
+                        🗑️
+                    </button>
+                ` : ''}
+            </div>
+        </div>
+    `).join('');
 }
 
 // Mettre à jour les statistiques
 async function updateStats() {
-    const inStock = allMaterials.filter(m => !m.exit_date);
-    const exited = allMaterials.filter(m => m.exit_date);
-    const totalValue = inStock.reduce((sum, m) => sum + (parseFloat(m.estimated_value) || 0), 0);
+    const totalItems = allMaterials.length;
+    const totalValue = allMaterials.reduce((sum, m) => 
+        sum + (parseFloat(m.estimated_value) || 0), 0
+    );
     
-    document.getElementById('totalItems').textContent = inStock.length;
-    document.getElementById('exitedItems').textContent = exited.length;
-    document.getElementById('totalValue').textContent = totalValue.toFixed(2) + ' €';
-}
-
-// Charger les clients
-async function loadClients() {
-    try {
-        const { data, error } = await supabase
-            .from('clients')
-            .select('*')
-            .order('company_name');
-
-        if (error) throw error;
-
-        const select = document.getElementById('clientSelect');
-        select.innerHTML = '<option value="">Sélectionner un client...</option>';
+    document.getElementById('totalItems').textContent = totalItems;
+    document.getElementById('totalValue').textContent = 
+        totalValue.toLocaleString('fr-FR') + ' €';
+    
+    // Compter les clients (admin uniquement)
+    if (userProfile.role === 'admin') {
+        const { count } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .eq('role', 'client');
         
-        data.forEach(client => {
-            const option = document.createElement('option');
-            option.value = client.id;
-            option.textContent = client.company_name;
-            select.appendChild(option);
-        });
-
-        document.getElementById('totalClients').textContent = data.length;
-        
-    } catch (error) {
-        console.error('Erreur chargement clients:', error);
+        document.getElementById('totalClients').textContent = count || 0;
     }
 }
 
-// Configuration des événements
+// Charger la liste des clients (admin uniquement)
+async function loadClients() {
+    const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, company_name, email')
+        .eq('role', 'client')
+        .order('full_name');
+    
+    if (error) {
+        console.error('Erreur chargement clients:', error);
+        return;
+    }
+    
+    const select = document.getElementById('clientSelect');
+    select.innerHTML = '<option value="">Sélectionner un client...</option>';
+    
+    data.forEach(client => {
+        const option = document.createElement('option');
+        option.value = client.id;
+        option.textContent = `${client.company_name || client.full_name} (${client.email})`;
+        select.appendChild(option);
+    });
+}
+
+// Configurer les événements
 function setupEventListeners() {
-    // Bouton d'ajout
+    // Bouton ajouter
     const addBtn = document.getElementById('addMaterialBtn');
     if (addBtn) {
-        addBtn.addEventListener('click', () => openModal());
+        addBtn.addEventListener('click', openAddModal);
     }
-
+    
     // Recherche
-    const searchInput = document.getElementById('searchInput');
-    if (searchInput) {
-        searchInput.addEventListener('input', (e) => {
-            const searchTerm = e.target.value.toLowerCase();
-            const filtered = allMaterials.filter(m => 
-                m.material_name.toLowerCase().includes(searchTerm) ||
-                m.material_type.toLowerCase().includes(searchTerm) ||
-                m.storage_location.toLowerCase().includes(searchTerm)
-            );
-            displayMaterials(filtered);
-        });
-    }
-
-    // Formulaire
-    const form = document.getElementById('materialForm');
-    if (form) {
-        form.addEventListener('submit', handleFormSubmit);
-    }
-
-    // Fermeture des modals
-    const closeButtons = document.querySelectorAll('.modal .close');
-    closeButtons.forEach(btn => {
-        btn.addEventListener('click', () => {
-            closeModal();
-            closeExitModal();
-            closeDetailsModal();
-        });
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+        const search = e.target.value.toLowerCase();
+        const filtered = allMaterials.filter(m => 
+            m.material_name.toLowerCase().includes(search) ||
+            m.material_type.toLowerCase().includes(search) ||
+            m.storage_location.toLowerCase().includes(search)
+        );
+        displayMaterials(filtered);
     });
-
-    // Clic en dehors du modal
+    
+    // Formulaire
+    document.getElementById('materialForm').addEventListener('submit', handleFormSubmit);
+    
+    // Modal
+    document.querySelector('.close').addEventListener('click', closeModal);
     window.addEventListener('click', (e) => {
-        if (e.target.classList.contains('modal')) {
+        const modal = document.getElementById('materialModal');
+        if (e.target === modal) {
             closeModal();
-            closeExitModal();
-            closeDetailsModal();
         }
     });
 }
 
-// Filtrer par statut
-window.filterByStatus = function(status) {
-    currentFilter = status;
+// Ouvrir le modal d'ajout
+function openAddModal() {
+    document.getElementById('modalTitle').textContent = 'Ajouter une matière première';
+    document.getElementById('materialForm').reset();
+    document.getElementById('materialId').value = '';
     
-    // Mettre à jour l'UI des boutons
-    document.querySelectorAll('.btn-filter').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    event.target.classList.add('active');
+    // Date du jour par défaut
+    document.getElementById('receptionDate').valueAsDate = new Date();
     
-    displayMaterials(allMaterials);
-};
-
-// Ouvrir le modal d'ajout/édition
-function openModal(material = null) {
-    const modal = document.getElementById('materialModal');
-    const form = document.getElementById('materialForm');
-    const title = document.getElementById('modalTitle');
-    
-    if (material) {
-        title.textContent = 'Éditer la matière première';
-        document.getElementById('materialId').value = material.id;
-        document.getElementById('materialName').value = material.material_name;
-        document.getElementById('materialType').value = material.material_type;
-        document.getElementById('quantity').value = material.quantity;
-        document.getElementById('unit').value = material.unit;
-        document.getElementById('storageLocation').value = material.storage_location;
-        document.getElementById('receptionDate').value = material.reception_date;
-        document.getElementById('certificateNumber').value = material.certificate_number || '';
-        document.getElementById('estimatedValue').value = material.estimated_value || '';
-        document.getElementById('notes').value = material.notes || '';
-        if (userProfile.role === 'admin') {
-            document.getElementById('clientSelect').value = material.client_id || '';
-        }
-    } else {
-        title.textContent = 'Ajouter une matière première';
-        form.reset();
-        document.getElementById('materialId').value = '';
-        document.getElementById('receptionDate').valueAsDate = new Date();
-    }
-    
-    modal.style.display = 'block';
+    document.getElementById('materialModal').style.display = 'block';
 }
 
 // Fermer le modal
 window.closeModal = function() {
     document.getElementById('materialModal').style.display = 'none';
-    document.getElementById('materialForm').reset();
+};
+
+// Éditer une matière
+window.editMaterial = async function(id) {
+    const material = allMaterials.find(m => m.id === id);
+    if (!material) return;
+    
+    document.getElementById('modalTitle').textContent = 'Modifier la matière première';
+    document.getElementById('materialId').value = material.id;
+    document.getElementById('materialName').value = material.material_name;
+    document.getElementById('materialType').value = material.material_type;
+    document.getElementById('quantity').value = material.quantity;
+    document.getElementById('unit').value = material.unit;
+    document.getElementById('storageLocation').value = material.storage_location;
+    document.getElementById('receptionDate').value = material.reception_date;
+    document.getElementById('certificateNumber').value = material.certificate_number || '';
+    document.getElementById('estimatedValue').value = material.estimated_value || '';
+    document.getElementById('notes').value = material.notes || '';
+    
+    if (userProfile.role === 'admin') {
+        document.getElementById('clientSelect').value = material.client_id;
+    }
+    
+    document.getElementById('materialModal').style.display = 'block';
 };
 
 // Soumettre le formulaire
 async function handleFormSubmit(e) {
     e.preventDefault();
     
-    const id = document.getElementById('materialId').value;
-    const isAdmin = userProfile.role === 'admin';
-    
+    const materialId = document.getElementById('materialId').value;
     const materialData = {
         material_name: document.getElementById('materialName').value,
         material_type: document.getElementById('materialType').value,
@@ -313,62 +277,61 @@ async function handleFormSubmit(e) {
         reception_date: document.getElementById('receptionDate').value,
         certificate_number: document.getElementById('certificateNumber').value || null,
         estimated_value: parseFloat(document.getElementById('estimatedValue').value) || null,
-        notes: document.getElementById('notes').value || null,
-        updated_at: new Date().toISOString()
+        notes: document.getElementById('notes').value || null
     };
-
-    // Ajouter le client_id seulement si admin
-    if (isAdmin) {
-        const clientId = document.getElementById('clientSelect').value;
-        if (!clientId) {
+    
+    // Ajouter le client_id si admin
+    if (userProfile.role === 'admin') {
+        materialData.client_id = document.getElementById('clientSelect').value;
+        if (!materialData.client_id) {
             alert('Veuillez sélectionner un client');
             return;
         }
-        materialData.client_id = clientId;
-    } else {
-        // Pour les clients, utiliser leur propre ID
-        materialData.client_id = userProfile.id;
     }
-
-    try {
-        let result;
-        if (id) {
-            // Mise à jour
-            result = await supabase
-                .from('materials')
-                .update(materialData)
-                .eq('id', id);
-        } else {
-            // Création
-            materialData.created_at = new Date().toISOString();
-            result = await supabase
-                .from('materials')
-                .insert([materialData]);
+    
+    let result;
+    if (materialId) {
+        // Mise à jour
+        result = await supabase
+            .from('materials')
+            .update(materialData)
+            .eq('id', materialId)
+            .select();
+    } else {
+        // Création
+        if (userProfile.role === 'client') {
+            materialData.client_id = currentUser.id;
         }
-
-        if (result.error) throw result.error;
-
-        closeModal();
+        
+        result = await supabase
+            .from('materials')
+            .insert([materialData])
+            .select();
+    }
+    
+    if (result.error) {
+        console.error('Erreur complète:', result.error);
+        alert('Erreur: ' + result.error.message);
+        return;
+    }
+    
+    console.log('Matériau enregistré:', result.data);
+    
+    closeModal();
+    
+    // Attendre un peu avant de recharger
+    setTimeout(async () => {
         await loadMaterials();
         await updateStats();
-        
-    } catch (error) {
-        console.error('Erreur complète:', error);
-        alert('Erreur: ' + error.message);
-    }
+    }, 500);
 }
+// ← J'AI SUPPRIMÉ L'ACCOLADE EN TROP ICI
 
-// Éditer un matériau
-window.editMaterial = async function(id) {
-    const material = allMaterials.find(m => m.id === id);
-    if (material) {
-        openModal(material);
-    }
-};
-
-// Supprimer un matériau
+// Supprimer une matière
 window.deleteMaterial = async function(id) {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer ce matériau ?')) return;
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cette matière première ?')) {
+        return;
+    }
     
     const { error } = await supabase
         .from('materials')
@@ -376,7 +339,7 @@ window.deleteMaterial = async function(id) {
         .eq('id', id);
     
     if (error) {
-        alert('Erreur: ' + error.message);
+        alert('Erreur de suppression: ' + error.message);
         return;
     }
     
@@ -389,65 +352,25 @@ window.viewDetails = function(id) {
     const material = allMaterials.find(m => m.id === id);
     if (!material) return;
     
-    const clientName = material.clients?.company_name || 'N/A';
-    const isExited = material.exit_date;
-    
     const detailsHTML = `
         <h2>📦 ${material.material_name}</h2>
-        <div class="details-grid">
-            <div class="detail-item">
-                <strong>Type:</strong>
-                <span>${material.material_type}</span>
-            </div>
-            <div class="detail-item">
-                <strong>Quantité:</strong>
-                <span>${material.quantity} ${material.unit}</span>
-            </div>
-            <div class="detail-item">
-                <strong>Emplacement:</strong>
-                <span>${material.storage_location}</span>
-            </div>
-            <div class="detail-item">
-                <strong>Date de réception:</strong>
-                <span>${formatDate(material.reception_date)}</span>
-            </div>
-            ${material.certificate_number ? `
-                <div class="detail-item">
-                    <strong>N° Certificat:</strong>
-                    <span>${material.certificate_number}</span>
+        <div class="material-details" style="grid-template-columns: 1fr; gap: 1rem; margin-top: 1.5rem;">
+            <div><strong>Type:</strong> ${material.material_type}</div>
+            <div><strong>Quantité:</strong> ${material.quantity} ${material.unit}</div>
+            <div><strong>Emplacement:</strong> ${material.storage_location}</div>
+            <div><strong>Date de réception:</strong> ${formatDate(material.reception_date)}</div>
+            ${material.certificate_number ? `<div><strong>N° Certificat:</strong> ${material.certificate_number}</div>` : ''}
+            ${material.estimated_value ? `<div><strong>Valeur estimée:</strong> ${material.estimated_value} €</div>` : ''}
+            ${material.notes ? `<div><strong>Notes:</strong><br>${material.notes}</div>` : ''}
+            ${userProfile.role === 'admin' && material.profiles ? `
+                <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+                    <strong>Client:</strong><br>
+                    ${material.profiles.company_name || material.profiles.full_name}<br>
+                    ${material.profiles.email}
                 </div>
             ` : ''}
-            ${material.estimated_value ? `
-                <div class="detail-item">
-                    <strong>Valeur estimée:</strong>
-                    <span>${material.estimated_value} €</span>
-                </div>
-            ` : ''}
-            ${userProfile.role === 'admin' ? `
-                <div class="detail-item">
-                    <strong>Client:</strong>
-                    <span>${clientName}</span>
-                </div>
-            ` : ''}
-            ${isExited ? `
-                <div class="detail-item">
-                    <strong>Date de sortie:</strong>
-                    <span>${formatDate(material.exit_date)}</span>
-                </div>
-            ` : ''}
-            ${material.notes ? `
-                <div class="detail-item full-width">
-                    <strong>Notes:</strong>
-                    <span>${material.notes}</span>
-                </div>
-            ` : ''}
-            <div class="detail-item">
-                <strong>Créé le:</strong>
-                <span>${formatDateTime(material.created_at)}</span>
-            </div>
-            <div class="detail-item">
-                <strong>Modifié le:</strong>
-                <span>${formatDateTime(material.updated_at)}</span>
+            <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--text-light); font-size: 0.875rem;">
+                Créé le: ${formatDateTime(material.created_at)}
             </div>
         </div>
     `;
@@ -456,68 +379,8 @@ window.viewDetails = function(id) {
     document.getElementById('detailsModal').style.display = 'block';
 };
 
-// Fermer le modal de détails
 window.closeDetailsModal = function() {
     document.getElementById('detailsModal').style.display = 'none';
-};
-
-// Ouvrir le modal de sortie
-window.openExitModal = function(id) {
-    const material = allMaterials.find(m => m.id === id);
-    if (!material) return;
-    
-    materialToExit = id;
-    document.getElementById('exitMaterialName').textContent = material.material_name;
-    document.getElementById('exitModal').style.display = 'block';
-};
-
-// Fermer le modal de sortie
-window.closeExitModal = function() {
-    document.getElementById('exitModal').style.display = 'none';
-    materialToExit = null;
-};
-
-// Effectuer la sortie
-window.performExit = async function() {
-    if (!materialToExit) return;
-    
-    const { error } = await supabase
-        .from('materials')
-        .update({ 
-            exit_date: new Date().toISOString().split('T')[0],
-            updated_at: new Date().toISOString()
-        })
-        .eq('id', materialToExit);
-    
-    if (error) {
-        alert('Erreur: ' + error.message);
-        return;
-    }
-    
-    closeExitModal();
-    await loadMaterials();
-    await updateStats();
-};
-
-// Annuler une sortie
-window.cancelExit = async function(id) {
-    if (!confirm('Voulez-vous vraiment annuler cette sortie ?')) return;
-    
-    const { error } = await supabase
-        .from('materials')
-        .update({ 
-            exit_date: null,
-            updated_at: new Date().toISOString()
-        })
-        .eq('id', id);
-    
-    if (error) {
-        alert('Erreur: ' + error.message);
-        return;
-    }
-    
-    await loadMaterials();
-    await updateStats();
 };
 
 // Écouter les changements en temps réel
