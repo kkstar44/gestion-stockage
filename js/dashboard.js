@@ -33,7 +33,7 @@ async function loadMaterials() {
             .from('materials')
             .select(`
                 *,
-                clients (
+                profiles (
                     company_name
                 )
             `)
@@ -63,370 +63,184 @@ function displayMaterials() {
         filteredMaterials = allMaterials.filter(m => m.exit_date);
     }
     
-    // Filtrer selon la recherche
-    const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-    if (searchTerm) {
-        filteredMaterials = filteredMaterials.filter(material => 
-            material.material_name?.toLowerCase().includes(searchTerm) ||
-            material.material_type?.toLowerCase().includes(searchTerm) ||
-            material.supplier?.toLowerCase().includes(searchTerm) ||
-            material.storage_location?.toLowerCase().includes(searchTerm)
-        );
-    }
-
     if (filteredMaterials.length === 0) {
-        container.innerHTML = '<p class="loading">Aucun matériau trouvé</p>';
+        container.innerHTML = '<p class="no-data">Aucun matériel trouvé</p>';
         return;
     }
-
-    container.innerHTML = filteredMaterials.map(material => {
-        const isExited = !!material.exit_date;
-        const exitedClass = isExited ? 'exited' : '';
-        const statusBadge = isExited 
-            ? '<span class="status-badge exited">📤 SORTI</span>'
-            : '<span class="status-badge in-stock">✅ EN STOCK</span>';
-        
-        const exitDateDisplay = isExited 
-            ? `<div class="exit-date">📤 Sorti le: ${formatDate(material.exit_date)}</div>`
-            : '';
-
-        // Boutons selon le rôle et le statut
-        let actionButtons = '';
-        if (currentUser.user_metadata?.role === 'admin') {
-            if (!isExited) {
-                actionButtons = `
-                    <button onclick="editMaterial(${material.id})" class="btn btn-secondary btn-sm">✏️ Modifier</button>
-                    <button onclick="openExitModal(${material.id})" class="btn btn-warning btn-sm">📤 Sortie</button>
-                    <button onclick="deleteMaterial(${material.id})" class="btn btn-danger btn-sm">🗑️ Supprimer</button>
-                `;
-            } else {
-                actionButtons = `
-                    <button onclick="cancelExit(${material.id})" class="btn btn-success btn-sm">↩️ Annuler sortie</button>
-                    <button onclick="deleteMaterial(${material.id})" class="btn btn-danger btn-sm">🗑️ Supprimer</button>
-                `;
-            }
-        }
-
-        actionButtons += `<button onclick="viewDetails(${material.id})" class="btn btn-primary btn-sm">👁️ Détails</button>`;
-
-        return `
-            <div class="material-card ${exitedClass}">
-                <div class="material-info">
-                    ${statusBadge}
-                    <h3>${material.material_name}</h3>
-                    <div class="material-details">
-                        <div class="material-detail">
-                            <strong>Type:</strong> ${material.material_type}
-                        </div>
-                        <div class="material-detail">
-                            <strong>Quantité:</strong> ${material.quantity} ${material.unit}
-                        </div>
-                        <div class="material-detail">
-                            <strong>Emplacement:</strong> ${material.storage_location}
-                        </div>
-                        <div class="material-detail">
-                            <strong>Fournisseur:</strong> ${material.supplier}
-                        </div>
-                        ${material.clients ? `
-                            <div class="material-detail">
-                                <strong>Client:</strong> ${material.clients.company_name}
-                            </div>
-                        ` : ''}
-                        <div class="material-detail">
-                            <strong>Réception:</strong> ${formatDate(material.reception_date)}
-                        </div>
-                    </div>
-                    ${exitDateDisplay}
-                </div>
-                <div class="material-actions">
-                    ${actionButtons}
-                </div>
+    
+    container.innerHTML = filteredMaterials.map(material => `
+        <div class="material-card ${material.exit_date ? 'exited' : ''}">
+            <div class="material-header">
+                <h3>${material.name}</h3>
+                <span class="badge ${material.exit_date ? 'badge-exited' : 'badge-stock'}">
+                    ${material.exit_date ? '📤 SORTI' : '✅ EN STOCK'}
+                </span>
             </div>
-        `;
-    }).join('');
+            <p><strong>Référence:</strong> ${material.reference || 'N/A'}</p>
+            <p><strong>Quantité:</strong> ${material.quantity}</p>
+            ${material.profiles ? `<p><strong>Client:</strong> ${material.profiles.company_name}</p>` : ''}
+            ${material.exit_date ? `<p><strong>Date de sortie:</strong> ${formatDate(material.exit_date)}</p>` : ''}
+            
+            <div class="material-actions">
+                <button onclick="showDetails('${material.id}')" class="btn-secondary">
+                    👁️ Détails
+                </button>
+                
+                ${!material.exit_date && currentUser.user_metadata?.role === 'admin' ? `
+                    <button onclick="showExitModal('${material.id}')" class="btn-primary">
+                        📤 Sortie
+                    </button>
+                ` : ''}
+                
+                ${material.exit_date && currentUser.user_metadata?.role === 'admin' ? `
+                    <button onclick="cancelExit('${material.id}')" class="btn-secondary">
+                        ↩️ Annuler sortie
+                    </button>
+                ` : ''}
+            </div>
+        </div>
+    `).join('');
 }
-
-// Mettre à jour les statistiques
-function updateStats() {
-    const inStockMaterials = allMaterials.filter(m => !m.exit_date);
-    const exitedMaterials = allMaterials.filter(m => m.exit_date);
-    
-    document.getElementById('totalItems').textContent = inStockMaterials.length;
-    document.getElementById('totalExited').textContent = exitedMaterials.length;
-    
-    const totalValue = inStockMaterials.reduce((sum, m) => sum + (parseFloat(m.estimated_value) || 0), 0);
-    document.getElementById('totalValue').textContent = totalValue.toFixed(2) + ' €';
-}
-
-// Ouvrir le modal de sortie
-window.openExitModal = function(materialId) {
-    materialToExit = allMaterials.find(m => m.id === materialId);
-    if (!materialToExit) return;
-    
-    document.getElementById('exitMessage').textContent = 
-        `Voulez-vous vraiment enregistrer la sortie de "${materialToExit.material_name}" ?`;
-    
-    // Pré-remplir avec la date du jour
-    document.getElementById('exitDate').valueAsDate = new Date();
-    
-    document.getElementById('exitModal').style.display = 'block';
-};
-
-// Fermer le modal de sortie
-window.closeExitModal = function() {
-    document.getElementById('exitModal').style.display = 'none';
-    materialToExit = null;
-};
-
-// Confirmer la sortie
-window.confirmExit = async function() {
-    if (!materialToExit) return;
-    
-    const exitDate = document.getElementById('exitDate').value;
-    if (!exitDate) {
-        alert('Veuillez sélectionner une date de sortie');
-        return;
-    }
-    
-    try {
-        const { error } = await supabase
-            .from('materials')
-            .update({ exit_date: exitDate })
-            .eq('id', materialToExit.id);
-        
-        if (error) throw error;
-        
-        showMessage('✅ Sortie enregistrée avec succès !', 'success');
-        closeExitModal();
-        loadMaterials();
-    } catch (error) {
-        console.error('Erreur:', error);
-        showMessage('❌ Erreur lors de l\'enregistrement de la sortie', 'error');
-    }
-};
-
-// Annuler une sortie
-window.cancelExit = async function(materialId) {
-    if (!confirm('Voulez-vous vraiment annuler la sortie de ce matériau ?')) {
-        return;
-    }
-    
-    try {
-        const { error } = await supabase
-            .from('materials')
-            .update({ exit_date: null })
-            .eq('id', materialId);
-        
-        if (error) throw error;
-        
-        showMessage('✅ Sortie annulée avec succès !', 'success');
-        loadMaterials();
-    } catch (error) {
-        console.error('Erreur:', error);
-        showMessage('❌ Erreur lors de l\'annulation', 'error');
-    }
-};
 
 // Charger les clients
 async function loadClients() {
-    if (currentUser.user_metadata?.role !== 'admin') return;
-    
     try {
         const { data, error } = await supabase
-            .from('clients')
+            .from('profiles')
             .select('*')
+            .eq('role', 'client')
             .order('company_name');
 
         if (error) throw error;
 
-        const select = document.getElementById('clientSelect');
-        select.innerHTML = '<option value="">Sélectionner un client...</option>' +
-            (data || []).map(client => 
-                `<option value="${client.id}">${client.company_name}</option>`
-            ).join('');
-
-        // Mettre à jour les stats clients
-        document.getElementById('totalClients').textContent = (data || []).length;
+        document.getElementById('clientsCount').textContent = data?.length || 0;
     } catch (error) {
-        console.error('Erreur:', error);
+        console.error('Erreur chargement clients:', error);
     }
 }
 
-// Configuration des événements
-function setupEventListeners() {
-    // Recherche
-    document.getElementById('searchInput').addEventListener('input', displayMaterials);
+// Mettre à jour les statistiques
+function updateStats() {
+    const inStock = allMaterials.filter(m => !m.exit_date).length;
+    const exited = allMaterials.filter(m => m.exit_date).length;
     
-    // Filtres
-    document.querySelectorAll('.btn-filter').forEach(btn => {
+    document.getElementById('totalMaterials').textContent = allMaterials.length;
+    document.getElementById('materialsInStock').textContent = inStock;
+    document.getElementById('materialsExited').textContent = exited;
+}
+
+// Configuration des écouteurs d'événements
+function setupEventListeners() {
+    // Boutons de filtre
+    document.querySelectorAll('.filter-btn').forEach(btn => {
         btn.addEventListener('click', function() {
-            document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
             currentFilter = this.dataset.filter;
             displayMaterials();
         });
     });
     
-    // Bouton d'ajout
-    const addBtn = document.getElementById('addMaterialBtn');
-    if (addBtn) {
-        addBtn.addEventListener('click', openAddModal);
-    }
+    // Modale de sortie
+    document.querySelector('.close').addEventListener('click', closeExitModal);
+    document.getElementById('cancelExit').addEventListener('click', closeExitModal);
+    document.getElementById('confirmExit').addEventListener('click', confirmMaterialExit);
     
-    // Formulaire
-    document.getElementById('materialForm').addEventListener('submit', handleSubmit);
-    
-    // Fermeture des modals
-    document.querySelectorAll('.close').forEach(closeBtn => {
-        closeBtn.addEventListener('click', function() {
-            this.closest('.modal').style.display = 'none';
-        });
-    });
-    
-    // Fermeture en cliquant en dehors
-    window.addEventListener('click', function(e) {
-        if (e.target.classList.contains('modal')) {
-            e.target.style.display = 'none';
-        }
-    });
-}
-
-// Ouvrir le modal d'ajout
-function openAddModal() {
-    document.getElementById('modalTitle').textContent = 'Ajouter une matière première';
-    document.getElementById('materialForm').reset();
-    document.getElementById('materialForm').dataset.editId = '';
-    document.getElementById('clientSelectGroup').style.display = 'block';
-    document.getElementById('materialModal').style.display = 'block';
-}
-
-// Éditer un matériau
-window.editMaterial = async function(materialId) {
-    const material = allMaterials.find(m => m.id === materialId);
-    if (!material) return;
-    
-    document.getElementById('modalTitle').textContent = 'Modifier la matière première';
-    document.getElementById('materialForm').dataset.editId = materialId;
-    
-    // Remplir le formulaire
-    document.getElementById('materialName').value = material.material_name || '';
-    document.getElementById('materialType').value = material.material_type || '';
-    document.getElementById('quantity').value = material.quantity || '';
-    document.getElementById('unit').value = material.unit || '';
-    document.getElementById('supplier').value = material.supplier || '';
-    document.getElementById('storageLocation').value = material.storage_location || '';
-    document.getElementById('receptionDate').value = material.reception_date || '';
-    document.getElementById('certificateNumber').value = material.certificate_number || '';
-    document.getElementById('estimatedValue').value = material.estimated_value || '';
-    document.getElementById('notes').value = material.notes || '';
-    
-    if (material.client_id) {
-        document.getElementById('clientSelect').value = material.client_id;
-        document.getElementById('clientSelectGroup').style.display = 'block';
-    }
-    
-    document.getElementById('materialModal').style.display = 'block';
-};
-
-// Fermer le modal
-window.closeModal = function() {
-    document.getElementById('materialModal').style.display = 'none';
-};
-
-// Soumettre le formulaire
-async function handleSubmit(e) {
-    e.preventDefault();
-    
-    const formData = {
-        material_name: document.getElementById('materialName').value,
-        material_type: document.getElementById('materialType').value,
-        quantity: parseFloat(document.getElementById('quantity').value),
-        unit: document.getElementById('unit').value,
-        supplier: document.getElementById('supplier').value,
-        storage_location: document.getElementById('storageLocation').value,
-        reception_date: document.getElementById('receptionDate').value,
-        certificate_number: document.getElementById('certificateNumber').value,
-        estimated_value: parseFloat(document.getElementById('estimatedValue').value) || 0,
-        notes: document.getElementById('notes').value,
-        client_id: document.getElementById('clientSelect').value || null
-    };
-    
-    const editId = document.getElementById('materialForm').dataset.editId;
-    
-    try {
-        if (editId) {
-            const { error } = await supabase
-                .from('materials')
-                .update(formData)
-                .eq('id', editId);
-            
-            if (error) throw error;
-            showMessage('✅ Matériau modifié avec succès !', 'success');
-        } else {
-            const { error } = await supabase
-                .from('materials')
-                .insert([formData]);
-            
-            if (error) throw error;
-            showMessage('✅ Matériau ajouté avec succès !', 'success');
+    // Fermer modale en cliquant à l'extérieur
+    window.addEventListener('click', function(event) {
+        const modal = document.getElementById('exitModal');
+        if (event.target === modal) {
+            closeExitModal();
         }
         
-        closeModal();
-        loadMaterials();
-    } catch (error) {
-        console.error('Erreur:', error);
-        showMessage('❌ Erreur lors de l\'enregistrement', 'error');
-    }
+        const detailsModal = document.getElementById('detailsModal');
+        if (event.target === detailsModal) {
+            closeDetailsModal();
+        }
+    });
 }
 
-// Supprimer un matériau
-window.deleteMaterial = async function(materialId) {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer ce matériau ?')) {
+// Afficher la modale de sortie
+window.showExitModal = function(materialId) {
+    materialToExit = materialId;
+    document.getElementById('exitDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('exitModal').style.display = 'block';
+};
+
+// Fermer la modale de sortie
+function closeExitModal() {
+    document.getElementById('exitModal').style.display = 'none';
+    materialToExit = null;
+}
+
+// Confirmer la sortie du matériel
+async function confirmMaterialExit() {
+    if (!materialToExit) return;
+    
+    const exitDate = document.getElementById('exitDate').value;
+    
+    if (!exitDate) {
+        showMessage('Veuillez sélectionner une date', 'error');
         return;
     }
     
     try {
         const { error } = await supabase
             .from('materials')
-            .delete()
-            .eq('id', materialId);
-        
+            .update({ 
+                exit_date: exitDate,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', materialToExit);
+
         if (error) throw error;
-        
-        showMessage('✅ Matériau supprimé avec succès !', 'success');
+
+        showMessage('Sortie enregistrée avec succès', 'success');
+        closeExitModal();
         loadMaterials();
     } catch (error) {
         console.error('Erreur:', error);
-        showMessage('❌ Erreur lors de la suppression', 'error');
+        showMessage('Erreur lors de l\'enregistrement de la sortie', 'error');
+    }
+}
+
+// Annuler la sortie d'un matériel
+window.cancelExit = async function(materialId) {
+    if (!confirm('Voulez-vous vraiment annuler cette sortie ?')) return;
+    
+    try {
+        const { error } = await supabase
+            .from('materials')
+            .update({ 
+                exit_date: null,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', materialId);
+
+        if (error) throw error;
+
+        showMessage('Sortie annulée avec succès', 'success');
+        loadMaterials();
+    } catch (error) {
+        console.error('Erreur:', error);
+        showMessage('Erreur lors de l\'annulation', 'error');
     }
 };
 
-// Voir les détails
-window.viewDetails = function(materialId) {
+// Afficher les détails d'un matériel
+window.showDetails = function(materialId) {
     const material = allMaterials.find(m => m.id === materialId);
     if (!material) return;
     
-    const isExited = !!material.exit_date;
-    const statusBadge = isExited 
-        ? '<span class="status-badge exited">📤 SORTI</span>'
-        : '<span class="status-badge in-stock">✅ EN STOCK</span>';
-    
-    const exitInfo = isExited 
-        ? `<p><strong>Date de sortie:</strong> ${formatDate(material.exit_date)}</p>`
-        : '';
-    
     document.getElementById('detailsContent').innerHTML = `
-        <h2>${material.material_name} ${statusBadge}</h2>
-        <div style="margin-top: 2rem;">
-            <p><strong>Type:</strong> ${material.material_type}</p>
-            <p><strong>Quantité:</strong> ${material.quantity} ${material.unit}</p>
-            <p><strong>Fournisseur:</strong> ${material.supplier}</p>
-            <p><strong>Emplacement:</strong> ${material.storage_location}</p>
-            <p><strong>Date de réception:</strong> ${formatDate(material.reception_date)}</p>
-            ${exitInfo}
-            ${material.certificate_number ? `<p><strong>N° certificat:</strong> ${material.certificate_number}</p>` : ''}
-            ${material.estimated_value ? `<p><strong>Valeur estimée:</strong> ${material.estimated_value} €</p>` : ''}
-            ${material.clients ? `<p><strong>Client:</strong> ${material.clients.company_name}</p>` : ''}
+        <h2>${material.name}</h2>
+        <div class="details-grid">
+            <p><strong>Référence:</strong> ${material.reference || 'N/A'}</p>
+            <p><strong>Quantité:</strong> ${material.quantity}</p>
+            <p><strong>Statut:</strong> ${material.exit_date ? '📤 Sorti' : '✅ En stock'}</p>
+            <p><strong>Date d'ajout:</strong> ${formatDate(material.created_at)}</p>
+            ${material.exit_date ? `<p><strong>Date de sortie:</strong> ${formatDate(material.exit_date)}</p>` : ''}
+            ${material.profiles ? `<p><strong>Client:</strong> ${material.profiles.company_name}</p>` : ''}
             ${material.notes ? `<p><strong>Notes:</strong> ${material.notes}</p>` : ''}
         </div>
     `;
