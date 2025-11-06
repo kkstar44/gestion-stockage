@@ -3,6 +3,9 @@ import { supabase, checkAuth, getUserProfile } from './supabase.js';
 let currentUser = null;
 let userProfile = null;
 let allMaterials = [];
+let currentFilter = 'all';
+let materialToExit = null;
+
 
 // Initialisation
 init();
@@ -412,3 +415,4 @@ function formatDate(dateString) {
 function formatDateTime(dateString) {
     return new Date(dateString).toLocaleString('fr-FR');
 }
+
