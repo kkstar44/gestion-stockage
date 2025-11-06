@@ -1,100 +1,142 @@
-import { supabase, checkAuth } from './supabase.js';
+import { supabase, checkAuth, getUserProfile } from './supabase.js';
 
 let currentUser = null;
+let userProfile = null;
 let allMaterials = [];
-let currentFilter = 'all';
-let materialToExit = null;
 
-// Vérification de l'authentification
+// Initialisation
+init();
+
 async function init() {
-    currentUser = await checkAuth();
-    if (!currentUser) {
-        window.location.href = 'auth.html';
+    // Vérifier l'authentification
+    const session = await checkAuth();
+    if (!session) {
+        window.location.href = 'login.html';
         return;
     }
     
-    document.getElementById('userName').textContent = currentUser.email;
+    currentUser = session.user;
     
-    // Afficher le bouton d'ajout seulement pour les admins
-    if (currentUser.user_metadata?.role === 'admin') {
-        document.getElementById('addMaterialBtn').style.display = 'block';
-        document.getElementById('clientsCard').style.display = 'flex';
+    // Charger le profil utilisateur
+    userProfile = await getUserProfile(currentUser.id);
+    if (!userProfile) {
+        alert('Erreur de chargement du profil');
+        return;
     }
     
-    loadMaterials();
-    loadClients();
+    // Afficher le nom de l'utilisateur
+    document.getElementById('userName').textContent = 
+        userProfile.full_name || userProfile.email;
+    
+    // Configurer l'interface selon le rôle
+    setupUIForRole();
+    
+    // Charger les données
+    await loadMaterials();
+    await updateStats();
+    
+    // Configurer les événements
     setupEventListeners();
+    
+    // Écouter les changements en temps réel
+    subscribeToChanges();
 }
 
-// Charger les matériaux
-async function loadMaterials() {
-    try {
-        const { data, error } = await supabase
-            .from('materials')
-            .select(`
-                *,
-                profiles (
-                    company_name
-                )
-            `)
-            .order('created_at', { ascending: false });
-
-        if (error) throw error;
-
-        allMaterials = data || [];
-        displayMaterials();
-        updateStats();
-    } catch (error) {
-        console.error('Erreur:', error);
-        showMessage('Erreur lors du chargement des données', 'error');
+// Configuration de l'UI selon le rôle
+function setupUIForRole() {
+    const isAdmin = userProfile.role === 'admin';
+    const addBtn = document.getElementById('addMaterialBtn');
+    const clientsCard = document.getElementById('clientsCard');
+    const clientSelectGroup = document.getElementById('clientSelectGroup');
+    
+    if (isAdmin) {
+        addBtn.style.display = 'block';
+        clientsCard.style.display = 'block';
+        clientSelectGroup.style.display = 'block';
+        loadClients(); // Charger la liste des clients
+    } else {
+        addBtn.style.display = 'none';
+        clientsCard.style.display = 'none';
+        clientSelectGroup.style.display = 'none';
     }
 }
 
-// Afficher les matériaux avec filtres
-function displayMaterials() {
+// Charger les matières premières
+async function loadMaterials() {
+    let query = supabase
+        .from('materials')
+        .select(`
+            *,
+            profiles:client_id(full_name, company_name, email)
+        `)
+        .order('reception_date', { ascending: false });
+    
+    // Les clients ne voient que leurs propres matières
+    if (userProfile.role === 'client') {
+        query = query.eq('client_id', currentUser.id);
+    }
+    
+    const { data, error } = await query;
+    
+    if (error) {
+        console.error('Erreur chargement:', error);
+        document.getElementById('materialsList').innerHTML = 
+            '<p class="error">Erreur de chargement des données</p>';
+        return;
+    }
+    
+    allMaterials = data || [];
+    displayMaterials(allMaterials);
+}
+
+// Afficher les matières
+function displayMaterials(materials) {
     const container = document.getElementById('materialsList');
     
-    // Filtrer selon le statut
-    let filteredMaterials = allMaterials;
-    
-    if (currentFilter === 'in_stock') {
-        filteredMaterials = allMaterials.filter(m => !m.exit_date);
-    } else if (currentFilter === 'exited') {
-        filteredMaterials = allMaterials.filter(m => m.exit_date);
-    }
-    
-    if (filteredMaterials.length === 0) {
-        container.innerHTML = '<p class="no-data">Aucun matériel trouvé</p>';
+    if (materials.length === 0) {
+        container.innerHTML = '<p class="loading">Aucune matière première enregistrée</p>';
         return;
     }
     
-    container.innerHTML = filteredMaterials.map(material => `
-        <div class="material-card ${material.exit_date ? 'exited' : ''}">
-            <div class="material-header">
-                <h3>${material.name}</h3>
-                <span class="badge ${material.exit_date ? 'badge-exited' : 'badge-stock'}">
-                    ${material.exit_date ? '📤 SORTI' : '✅ EN STOCK'}
-                </span>
+    container.innerHTML = materials.map(material => `
+        <div class="material-card">
+            <div class="material-info">
+                <h3>${material.material_name}</h3>
+                <div class="material-details">
+                    <div class="material-detail">
+                        <strong>Type:</strong> ${material.material_type}
+                    </div>
+                    <div class="material-detail">
+                        <strong>Quantité:</strong> ${material.quantity} ${material.unit}
+                    </div>
+                    <div class="material-detail">
+                        <strong>Emplacement:</strong> ${material.storage_location}
+                    </div>
+                    <div class="material-detail">
+                        <strong>Date:</strong> ${formatDate(material.reception_date)}
+                    </div>
+                    ${material.estimated_value ? `
+                        <div class="material-detail">
+                            <strong>Valeur:</strong> ${material.estimated_value} €
+                        </div>
+                    ` : ''}
+                    ${userProfile.role === 'admin' && material.profiles ? `
+                        <div class="material-detail">
+                            <strong>Client:</strong> ${material.profiles.company_name || material.profiles.full_name}
+                        </div>
+                    ` : ''}
+                </div>
             </div>
-            <p><strong>Référence:</strong> ${material.reference || 'N/A'}</p>
-            <p><strong>Quantité:</strong> ${material.quantity}</p>
-            ${material.profiles ? `<p><strong>Client:</strong> ${material.profiles.company_name}</p>` : ''}
-            ${material.exit_date ? `<p><strong>Date de sortie:</strong> ${formatDate(material.exit_date)}</p>` : ''}
-            
             <div class="material-actions">
-                <button onclick="showDetails('${material.id}')" class="btn-secondary">
+                <button class="btn btn-sm btn-primary" onclick="viewDetails('${material.id}')">
                     👁️ Détails
                 </button>
-                
-                ${!material.exit_date && currentUser.user_metadata?.role === 'admin' ? `
-                    <button onclick="showExitModal('${material.id}')" class="btn-primary">
-                        📤 Sortie
+                ${userProfile.role === 'admin' ? `
+                    <button class="btn btn-sm btn-secondary" onclick="editMaterial('${material.id}')">
+                        ✏️
                     </button>
-                ` : ''}
-                
-                ${material.exit_date && currentUser.user_metadata?.role === 'admin' ? `
-                    <button onclick="cancelExit('${material.id}')" class="btn-secondary">
-                        ↩️ Annuler sortie
+                    <button class="btn btn-sm btn-danger" onclick="deleteMaterial('${material.id}')">
+                        🗑️
                     </button>
                 ` : ''}
             </div>
@@ -102,149 +144,238 @@ function displayMaterials() {
     `).join('');
 }
 
-// Charger les clients
-async function loadClients() {
-    try {
-        const { data, error } = await supabase
+// Mettre à jour les statistiques
+async function updateStats() {
+    const totalItems = allMaterials.length;
+    const totalValue = allMaterials.reduce((sum, m) => 
+        sum + (parseFloat(m.estimated_value) || 0), 0
+    );
+    
+    document.getElementById('totalItems').textContent = totalItems;
+    document.getElementById('totalValue').textContent = 
+        totalValue.toLocaleString('fr-FR') + ' €';
+    
+    // Compter les clients (admin uniquement)
+    if (userProfile.role === 'admin') {
+        const { count } = await supabase
             .from('profiles')
-            .select('*')
-            .eq('role', 'client')
-            .order('company_name');
-
-        if (error) throw error;
-
-        document.getElementById('clientsCount').textContent = data?.length || 0;
-    } catch (error) {
-        console.error('Erreur chargement clients:', error);
+            .select('*', { count: 'exact', head: true })
+            .eq('role', 'client');
+        
+        document.getElementById('totalClients').textContent = count || 0;
     }
 }
 
-// Mettre à jour les statistiques
-function updateStats() {
-    const inStock = allMaterials.filter(m => !m.exit_date).length;
-    const exited = allMaterials.filter(m => m.exit_date).length;
+// Charger la liste des clients (admin uniquement)
+async function loadClients() {
+    const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, company_name, email')
+        .eq('role', 'client')
+        .order('full_name');
     
-    document.getElementById('totalMaterials').textContent = allMaterials.length;
-    document.getElementById('materialsInStock').textContent = inStock;
-    document.getElementById('materialsExited').textContent = exited;
-}
-
-// Configuration des écouteurs d'événements
-function setupEventListeners() {
-    // Boutons de filtre
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-            currentFilter = this.dataset.filter;
-            displayMaterials();
-        });
-    });
-    
-    // Modale de sortie
-    document.querySelector('.close').addEventListener('click', closeExitModal);
-    document.getElementById('cancelExit').addEventListener('click', closeExitModal);
-    document.getElementById('confirmExit').addEventListener('click', confirmMaterialExit);
-    
-    // Fermer modale en cliquant à l'extérieur
-    window.addEventListener('click', function(event) {
-        const modal = document.getElementById('exitModal');
-        if (event.target === modal) {
-            closeExitModal();
-        }
-        
-        const detailsModal = document.getElementById('detailsModal');
-        if (event.target === detailsModal) {
-            closeDetailsModal();
-        }
-    });
-}
-
-// Afficher la modale de sortie
-window.showExitModal = function(materialId) {
-    materialToExit = materialId;
-    document.getElementById('exitDate').value = new Date().toISOString().split('T')[0];
-    document.getElementById('exitModal').style.display = 'block';
-};
-
-// Fermer la modale de sortie
-function closeExitModal() {
-    document.getElementById('exitModal').style.display = 'none';
-    materialToExit = null;
-}
-
-// Confirmer la sortie du matériel
-async function confirmMaterialExit() {
-    if (!materialToExit) return;
-    
-    const exitDate = document.getElementById('exitDate').value;
-    
-    if (!exitDate) {
-        showMessage('Veuillez sélectionner une date', 'error');
+    if (error) {
+        console.error('Erreur chargement clients:', error);
         return;
     }
     
-    try {
-        const { error } = await supabase
-            .from('materials')
-            .update({ 
-                exit_date: exitDate,
-                updated_at: new Date().toISOString()
-            })
-            .eq('id', materialToExit);
-
-        if (error) throw error;
-
-        showMessage('Sortie enregistrée avec succès', 'success');
-        closeExitModal();
-        loadMaterials();
-    } catch (error) {
-        console.error('Erreur:', error);
-        showMessage('Erreur lors de l\'enregistrement de la sortie', 'error');
-    }
+    const select = document.getElementById('clientSelect');
+    select.innerHTML = '<option value="">Sélectionner un client...</option>';
+    
+    data.forEach(client => {
+        const option = document.createElement('option');
+        option.value = client.id;
+        option.textContent = `${client.company_name || client.full_name} (${client.email})`;
+        select.appendChild(option);
+    });
 }
 
-// Annuler la sortie d'un matériel
-window.cancelExit = async function(materialId) {
-    if (!confirm('Voulez-vous vraiment annuler cette sortie ?')) return;
-    
-    try {
-        const { error } = await supabase
-            .from('materials')
-            .update({ 
-                exit_date: null,
-                updated_at: new Date().toISOString()
-            })
-            .eq('id', materialId);
-
-        if (error) throw error;
-
-        showMessage('Sortie annulée avec succès', 'success');
-        loadMaterials();
-    } catch (error) {
-        console.error('Erreur:', error);
-        showMessage('Erreur lors de l\'annulation', 'error');
+// Configurer les événements
+function setupEventListeners() {
+    // Bouton ajouter
+    const addBtn = document.getElementById('addMaterialBtn');
+    if (addBtn) {
+        addBtn.addEventListener('click', openAddModal);
     }
+    
+    // Recherche
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+        const search = e.target.value.toLowerCase();
+        const filtered = allMaterials.filter(m => 
+            m.material_name.toLowerCase().includes(search) ||
+            m.material_type.toLowerCase().includes(search) ||
+            m.storage_location.toLowerCase().includes(search)
+        );
+        displayMaterials(filtered);
+    });
+    
+    // Formulaire
+    document.getElementById('materialForm').addEventListener('submit', handleFormSubmit);
+    
+    // Modal
+    document.querySelector('.close').addEventListener('click', closeModal);
+    window.addEventListener('click', (e) => {
+        const modal = document.getElementById('materialModal');
+        if (e.target === modal) {
+            closeModal();
+        }
+    });
+}
+
+// Ouvrir le modal d'ajout
+function openAddModal() {
+    document.getElementById('modalTitle').textContent = 'Ajouter une matière première';
+    document.getElementById('materialForm').reset();
+    document.getElementById('materialId').value = '';
+    
+    // Date du jour par défaut
+    document.getElementById('receptionDate').valueAsDate = new Date();
+    
+    document.getElementById('materialModal').style.display = 'block';
+}
+
+// Fermer le modal
+window.closeModal = function() {
+    document.getElementById('materialModal').style.display = 'none';
 };
 
-// Afficher les détails d'un matériel
-window.showDetails = function(materialId) {
-    const material = allMaterials.find(m => m.id === materialId);
+// Éditer une matière
+window.editMaterial = async function(id) {
+    const material = allMaterials.find(m => m.id === id);
     if (!material) return;
     
-    document.getElementById('detailsContent').innerHTML = `
-        <h2>${material.name}</h2>
-        <div class="details-grid">
-            <p><strong>Référence:</strong> ${material.reference || 'N/A'}</p>
-            <p><strong>Quantité:</strong> ${material.quantity}</p>
-            <p><strong>Statut:</strong> ${material.exit_date ? '📤 Sorti' : '✅ En stock'}</p>
-            <p><strong>Date d'ajout:</strong> ${formatDate(material.created_at)}</p>
-            ${material.exit_date ? `<p><strong>Date de sortie:</strong> ${formatDate(material.exit_date)}</p>` : ''}
-            ${material.profiles ? `<p><strong>Client:</strong> ${material.profiles.company_name}</p>` : ''}
-            ${material.notes ? `<p><strong>Notes:</strong> ${material.notes}</p>` : ''}
+    document.getElementById('modalTitle').textContent = 'Modifier la matière première';
+    document.getElementById('materialId').value = material.id;
+    document.getElementById('materialName').value = material.material_name;
+    document.getElementById('materialType').value = material.material_type;
+    document.getElementById('quantity').value = material.quantity;
+    document.getElementById('unit').value = material.unit;
+    document.getElementById('storageLocation').value = material.storage_location;
+    document.getElementById('receptionDate').value = material.reception_date;
+    document.getElementById('certificateNumber').value = material.certificate_number || '';
+    document.getElementById('estimatedValue').value = material.estimated_value || '';
+    document.getElementById('notes').value = material.notes || '';
+    
+    if (userProfile.role === 'admin') {
+        document.getElementById('clientSelect').value = material.client_id;
+    }
+    
+    document.getElementById('materialModal').style.display = 'block';
+};
+
+// Soumettre le formulaire
+async function handleFormSubmit(e) {
+    e.preventDefault();
+    
+    const materialId = document.getElementById('materialId').value;
+    const materialData = {
+        material_name: document.getElementById('materialName').value,
+        material_type: document.getElementById('materialType').value,
+        quantity: parseFloat(document.getElementById('quantity').value),
+        unit: document.getElementById('unit').value,
+        storage_location: document.getElementById('storageLocation').value,
+        reception_date: document.getElementById('receptionDate').value,
+        certificate_number: document.getElementById('certificateNumber').value || null,
+        estimated_value: parseFloat(document.getElementById('estimatedValue').value) || null,
+        notes: document.getElementById('notes').value || null
+    };
+    
+    // Ajouter le client_id si admin
+    if (userProfile.role === 'admin') {
+        materialData.client_id = document.getElementById('clientSelect').value;
+        if (!materialData.client_id) {
+            alert('Veuillez sélectionner un client');
+            return;
+        }
+    }
+    
+    let result;
+    if (materialId) {
+        // Mise à jour
+        result = await supabase
+            .from('materials')
+            .update(materialData)
+            .eq('id', materialId)
+            .select();
+    } else {
+        // Création
+        if (userProfile.role === 'client') {
+            materialData.client_id = currentUser.id;
+        }
+        
+        result = await supabase
+            .from('materials')
+            .insert([materialData])
+            .select();
+    }
+    
+    if (result.error) {
+        console.error('Erreur complète:', result.error);
+        alert('Erreur: ' + result.error.message);
+        return;
+    }
+    
+    console.log('Matériau enregistré:', result.data);
+    
+    closeModal();
+    
+    // Attendre un peu avant de recharger
+    setTimeout(async () => {
+        await loadMaterials();
+        await updateStats();
+    }, 500);
+}
+// ← J'AI SUPPRIMÉ L'ACCOLADE EN TROP ICI
+
+// Supprimer une matière
+window.deleteMaterial = async function(id) {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cette matière première ?')) {
+        return;
+    }
+    
+    const { error } = await supabase
+        .from('materials')
+        .delete()
+        .eq('id', id);
+    
+    if (error) {
+        alert('Erreur de suppression: ' + error.message);
+        return;
+    }
+    
+    await loadMaterials();
+    await updateStats();
+};
+
+// Voir les détails
+window.viewDetails = function(id) {
+    const material = allMaterials.find(m => m.id === id);
+    if (!material) return;
+    
+    const detailsHTML = `
+        <h2>📦 ${material.material_name}</h2>
+        <div class="material-details" style="grid-template-columns: 1fr; gap: 1rem; margin-top: 1.5rem;">
+            <div><strong>Type:</strong> ${material.material_type}</div>
+            <div><strong>Quantité:</strong> ${material.quantity} ${material.unit}</div>
+            <div><strong>Emplacement:</strong> ${material.storage_location}</div>
+            <div><strong>Date de réception:</strong> ${formatDate(material.reception_date)}</div>
+            ${material.certificate_number ? `<div><strong>N° Certificat:</strong> ${material.certificate_number}</div>` : ''}
+            ${material.estimated_value ? `<div><strong>Valeur estimée:</strong> ${material.estimated_value} €</div>` : ''}
+            ${material.notes ? `<div><strong>Notes:</strong><br>${material.notes}</div>` : ''}
+            ${userProfile.role === 'admin' && material.profiles ? `
+                <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+                    <strong>Client:</strong><br>
+                    ${material.profiles.company_name || material.profiles.full_name}<br>
+                    ${material.profiles.email}
+                </div>
+            ` : ''}
+            <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--text-light); font-size: 0.875rem;">
+                Créé le: ${formatDateTime(material.created_at)}
+            </div>
         </div>
     `;
     
+    document.getElementById('detailsContent').innerHTML = detailsHTML;
     document.getElementById('detailsModal').style.display = 'block';
 };
 
@@ -252,28 +383,32 @@ window.closeDetailsModal = function() {
     document.getElementById('detailsModal').style.display = 'none';
 };
 
+// Écouter les changements en temps réel
+function subscribeToChanges() {
+    supabase
+        .channel('materials_changes')
+        .on('postgres_changes', 
+            { event: '*', schema: 'public', table: 'materials' },
+            async (payload) => {
+                console.log('Changement détecté:', payload);
+                await loadMaterials();
+                await updateStats();
+            }
+        )
+        .subscribe();
+}
+
 // Déconnexion
 window.logout = async function() {
     await supabase.auth.signOut();
-    window.location.href = 'index.html';
+    window.location.href = 'login.html';
 };
 
-// Formatage de date
+// Utilitaires
 function formatDate(dateString) {
-    if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('fr-FR');
+    return new Date(dateString).toLocaleDateString('fr-FR');
 }
 
-// Afficher un message
-function showMessage(message, type) {
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${type}`;
-    messageDiv.textContent = message;
-    document.querySelector('.dashboard-content').prepend(messageDiv);
-    
-    setTimeout(() => messageDiv.remove(), 5000);
+function formatDateTime(dateString) {
+    return new Date(dateString).toLocaleString('fr-FR');
 }
-
-// Initialiser au chargement
-init();
