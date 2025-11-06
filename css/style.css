@@ -18,6 +18,8 @@
     --border: #e2e8f0;
     --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.1);
+    --exited-bg: #f1f5f9;
+    --exited-border: #cbd5e1;
 }
 
 body {
@@ -208,6 +210,19 @@ body {
     color: white;
 }
 
+.btn-danger:hover {
+    background: #dc2626;
+}
+
+.btn-warning {
+    background: var(--warning);
+    color: white;
+}
+
+.btn-warning:hover {
+    background: #d97706;
+}
+
 .btn-sm {
     padding: 0.5rem 1rem;
     font-size: 0.875rem;
@@ -215,6 +230,31 @@ body {
 
 .btn-full {
     width: 100%;
+}
+
+/* Filter Buttons */
+.filter-buttons {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.btn-filter {
+    padding: 0.5rem 1rem;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.btn-filter:hover {
+    background: var(--bg);
+}
+
+.btn-filter.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
 }
 
 /* Dashboard */
@@ -311,11 +351,44 @@ body {
     gap: 1rem;
     align-items: center;
     transition: transform 0.2s;
+    position: relative;
 }
 
 .material-card:hover {
     transform: translateY(-2px);
     box-shadow: var(--shadow-lg);
+}
+
+/* Matériaux sortis */
+.material-card.exited {
+    background: var(--exited-bg);
+    border: 2px solid var(--exited-border);
+    opacity: 0.8;
+}
+
+.material-card.exited .material-info h3 {
+    color: var(--text-light);
+}
+
+.status-badge {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.status-badge.in-stock {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.status-badge.exited {
+    background: #fee2e2;
+    color: #991b1b;
 }
 
 .material-info h3 {
@@ -338,9 +411,16 @@ body {
     color: var(--text);
 }
 
+.exit-date {
+    color: var(--danger);
+    font-weight: 500;
+    margin-top: 0.5rem;
+}
+
 .material-actions {
     display: flex;
     gap: 0.5rem;
+    flex-wrap: wrap;
 }
 
 /* Modal */
@@ -363,6 +443,10 @@ body {
     border-radius: 12px;
     max-width: 800px;
     position: relative;
+}
+
+.modal-small {
+    max-width: 500px;
 }
 
 .close {
@@ -422,6 +506,11 @@ body {
         flex-direction: column;
         align-items: stretch;
     }
+
+    .filter-buttons {
+        width: 100%;
+        justify-content: space-between;
+    }
     
     .material-card {
         grid-template-columns: 1fr;
@@ -434,5 +523,11 @@ body {
     .navbar {
         flex-direction: column;
         gap: 1rem;
+    }
+
+    .status-badge {
+        position: static;
+        display: inline-block;
+        margin-bottom: 0.5rem;
     }
 }
