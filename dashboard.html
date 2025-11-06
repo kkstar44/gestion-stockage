@@ -28,6 +28,13 @@
                     </div>
                 </div>
                 <div class="stat-card">
+                    <div class="stat-icon">📤</div>
+                    <div class="stat-info">
+                        <h3 id="totalExited">0</h3>
+                        <p>Articles sortis</p>
+                    </div>
+                </div>
+                <div class="stat-card">
                     <div class="stat-icon">💰</div>
                     <div class="stat-info">
                         <h3 id="totalValue">0 €</h3>
@@ -46,6 +53,11 @@
             <div class="controls">
                 <div class="search-box">
                     <input type="text" id="searchInput" placeholder="Rechercher...">
+                </div>
+                <div class="filter-buttons">
+                    <button class="btn btn-filter active" data-filter="all">Tous</button>
+                    <button class="btn btn-filter" data-filter="in_stock">En stock</button>
+                    <button class="btn btn-filter" data-filter="exited">Sortis</button>
                 </div>
                 <button id="addMaterialBtn" class="btn btn-primary" style="display: none;">
                     ➕ Ajouter une matière
@@ -136,6 +148,23 @@
         </div>
     </div>
 
+    <!-- Modal de confirmation de sortie -->
+    <div id="exitModal" class="modal">
+        <div class="modal-content modal-small">
+            <span class="close" onclick="closeExitModal()">&times;</span>
+            <h2>📤 Confirmer la sortie</h2>
+            <p id="exitMessage">Voulez-vous vraiment enregistrer la sortie de ce matériau ?</p>
+            <div class="form-group">
+                <label for="exitDate">Date de sortie *</label>
+                <input type="date" id="exitDate" required>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeExitModal()">Annuler</button>
+                <button type="button" class="btn btn-danger" onclick="confirmExit()">Confirmer la sortie</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal détails -->
     <div id="detailsModal" class="modal">
         <div class="modal-content">
@@ -149,4 +178,3 @@
     <script type="module" src="js/dashboard.js"></script>
 </body>
 </html>
-
