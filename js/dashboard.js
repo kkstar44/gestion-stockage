@@ -6,7 +6,6 @@ let allMaterials = [];
 let currentFilter = 'all';
 let materialToExit = null;
 
-
 // Initialisation
 init();
 
@@ -102,7 +101,8 @@ function displayMaterials(materials) {
     }
     
     container.innerHTML = materials.map(material => `
-        <div class="material-card">
+        <div class="material-card ${material.exit_date ? 'exited' : ''}">
+            ${material.exit_date ? '<span class="exit-badge">📤 SORTI</span>' : ''}
             <div class="material-info">
                 <h3>${material.material_name}</h3>
                 <div class="material-details">
@@ -118,6 +118,11 @@ function displayMaterials(materials) {
                     <div class="material-detail">
                         <strong>Date:</strong> ${formatDate(material.reception_date)}
                     </div>
+                    ${material.exit_date ? `
+                        <div class="material-detail">
+                            <strong>Date de sortie:</strong> ${formatDate(material.exit_date)}
+                        </div>
+                    ` : ''}
                     ${material.estimated_value ? `
                         <div class="material-detail">
                             <strong>Valeur:</strong> ${material.estimated_value} €
@@ -134,6 +139,15 @@ function displayMaterials(materials) {
                 <button class="btn btn-sm btn-primary" onclick="viewDetails('${material.id}')">
                     👁️ Détails
                 </button>
+                ${!material.exit_date ? `
+                    <button class="btn btn-sm btn-warning" onclick="confirmExit('${material.id}')">
+                        📤 Sortir
+                    </button>
+                ` : `
+                    <button class="btn btn-sm btn-success" onclick="cancelExit('${material.id}')">
+                        ↩️ Annuler
+                    </button>
+                `}
                 ${userProfile.role === 'admin' ? `
                     <button class="btn btn-sm btn-secondary" onclick="editMaterial('${material.id}')">
                         ✏️
@@ -154,9 +168,13 @@ async function updateStats() {
         sum + (parseFloat(m.estimated_value) || 0), 0
     );
     
+    // Compter les articles sortis
+    const exitedItems = allMaterials.filter(m => m.exit_date !== null).length;
+    
     document.getElementById('totalItems').textContent = totalItems;
     document.getElementById('totalValue').textContent = 
         totalValue.toLocaleString('fr-FR') + ' €';
+    document.getElementById('exitedItems').textContent = exitedItems;
     
     // Compter les clients (admin uniquement)
     if (userProfile.role === 'admin') {
@@ -173,9 +191,9 @@ async function updateStats() {
 async function loadClients() {
     const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, company_name, email')
+        .select('*')
         .eq('role', 'client')
-        .order('full_name');
+        .order('company_name');
     
     if (error) {
         console.error('Erreur chargement clients:', error);
@@ -183,87 +201,79 @@ async function loadClients() {
     }
     
     const select = document.getElementById('clientSelect');
-    select.innerHTML = '<option value="">Sélectionner un client...</option>';
-    
-    data.forEach(client => {
-        const option = document.createElement('option');
-        option.value = client.id;
-        option.textContent = `${client.company_name || client.full_name} (${client.email})`;
-        select.appendChild(option);
-    });
+    select.innerHTML = '<option value="">Sélectionner un client</option>' +
+        data.map(client => 
+            `<option value="${client.id}">${client.company_name || client.full_name}</option>`
+        ).join('');
 }
 
-// Configurer les événements
+// Configuration des événements
 function setupEventListeners() {
     // Bouton ajouter
-    const addBtn = document.getElementById('addMaterialBtn');
-    if (addBtn) {
-        addBtn.addEventListener('click', openAddModal);
-    }
+    document.getElementById('addMaterialBtn').addEventListener('click', openModal);
     
-    // Recherche
-    document.getElementById('searchInput').addEventListener('input', (e) => {
-        const search = e.target.value.toLowerCase();
-        const filtered = allMaterials.filter(m => 
-            m.material_name.toLowerCase().includes(search) ||
-            m.material_type.toLowerCase().includes(search) ||
-            m.storage_location.toLowerCase().includes(search)
-        );
-        displayMaterials(filtered);
-    });
+    // Fermer les modals
+    document.getElementById('closeModal').addEventListener('click', closeModal);
+    document.getElementById('cancelBtn').addEventListener('click', closeModal);
     
-    // Formulaire
+    // Soumettre le formulaire
     document.getElementById('materialForm').addEventListener('submit', handleFormSubmit);
     
-    // Modal
-    document.querySelector('.close').addEventListener('click', closeModal);
+    // Fermer en cliquant en dehors
     window.addEventListener('click', (e) => {
-        const modal = document.getElementById('materialModal');
-        if (e.target === modal) {
-            closeModal();
+        if (e.target.classList.contains('modal')) {
+            e.target.style.display = 'none';
         }
     });
+    
+    // Filtres de statut
+    document.getElementById('filterAll').addEventListener('click', () => filterByStatus('all'));
+    document.getElementById('filterInStock').addEventListener('click', () => filterByStatus('in_stock'));
+    document.getElementById('filterExited').addEventListener('click', () => filterByStatus('exited'));
 }
 
-// Ouvrir le modal d'ajout
-function openAddModal() {
-    document.getElementById('modalTitle').textContent = 'Ajouter une matière première';
-    document.getElementById('materialForm').reset();
-    document.getElementById('materialId').value = '';
+// Ouvrir le modal d'ajout/modification
+function openModal(materialId = null) {
+    const modal = document.getElementById('materialModal');
+    const form = document.getElementById('materialForm');
+    const title = document.getElementById('modalTitle');
     
-    // Date du jour par défaut
-    document.getElementById('receptionDate').valueAsDate = new Date();
+    form.reset();
     
-    document.getElementById('materialModal').style.display = 'block';
-}
-
-// Fermer le modal
-window.closeModal = function() {
-    document.getElementById('materialModal').style.display = 'none';
-};
-
-// Éditer une matière
-window.editMaterial = async function(id) {
-    const material = allMaterials.find(m => m.id === id);
-    if (!material) return;
-    
-    document.getElementById('modalTitle').textContent = 'Modifier la matière première';
-    document.getElementById('materialId').value = material.id;
-    document.getElementById('materialName').value = material.material_name;
-    document.getElementById('materialType').value = material.material_type;
-    document.getElementById('quantity').value = material.quantity;
-    document.getElementById('unit').value = material.unit;
-    document.getElementById('storageLocation').value = material.storage_location;
-    document.getElementById('receptionDate').value = material.reception_date;
-    document.getElementById('certificateNumber').value = material.certificate_number || '';
-    document.getElementById('estimatedValue').value = material.estimated_value || '';
-    document.getElementById('notes').value = material.notes || '';
-    
-    if (userProfile.role === 'admin') {
-        document.getElementById('clientSelect').value = material.client_id;
+    if (materialId) {
+        title.textContent = '✏️ Modifier une matière première';
+        const material = allMaterials.find(m => m.id === materialId);
+        if (material) {
+            document.getElementById('materialId').value = material.id;
+            document.getElementById('materialName').value = material.material_name;
+            document.getElementById('materialType').value = material.material_type;
+            document.getElementById('quantity').value = material.quantity;
+            document.getElementById('unit').value = material.unit;
+            document.getElementById('storageLocation').value = material.storage_location;
+            document.getElementById('receptionDate').value = material.reception_date;
+            document.getElementById('certificateNumber').value = material.certificate_number || '';
+            document.getElementById('estimatedValue').value = material.estimated_value || '';
+            document.getElementById('notes').value = material.notes || '';
+            
+            if (userProfile.role === 'admin') {
+                document.getElementById('clientSelect').value = material.client_id || '';
+            }
+        }
+    } else {
+        title.textContent = '➕ Ajouter une matière première';
+        document.getElementById('materialId').value = '';
     }
     
-    document.getElementById('materialModal').style.display = 'block';
+    modal.style.display = 'block';
+}
+
+function closeModal() {
+    document.getElementById('materialModal').style.display = 'none';
+}
+
+// Modifier une matière
+window.editMaterial = function(id) {
+    openModal(id);
 };
 
 // Soumettre le formulaire
@@ -280,19 +290,18 @@ async function handleFormSubmit(e) {
         reception_date: document.getElementById('receptionDate').value,
         certificate_number: document.getElementById('certificateNumber').value || null,
         estimated_value: parseFloat(document.getElementById('estimatedValue').value) || null,
-        notes: document.getElementById('notes').value || null
+        notes: document.getElementById('notes').value || null,
+        updated_at: new Date().toISOString()
     };
     
-    // Ajouter le client_id si admin
+    // Admin peut assigner un client
     if (userProfile.role === 'admin') {
-        materialData.client_id = document.getElementById('clientSelect').value;
-        if (!materialData.client_id) {
-            alert('Veuillez sélectionner un client');
-            return;
-        }
+        const clientId = document.getElementById('clientSelect').value;
+        materialData.client_id = clientId || null;
     }
     
     let result;
+    
     if (materialId) {
         // Mise à jour
         result = await supabase
@@ -328,7 +337,6 @@ async function handleFormSubmit(e) {
         await updateStats();
     }, 500);
 }
-// ← J'AI SUPPRIMÉ L'ACCOLADE EN TROP ICI
 
 // Supprimer une matière
 window.deleteMaterial = async function(id) {
@@ -364,6 +372,7 @@ window.viewDetails = function(id) {
             <div><strong>Date de réception:</strong> ${formatDate(material.reception_date)}</div>
             ${material.certificate_number ? `<div><strong>N° Certificat:</strong> ${material.certificate_number}</div>` : ''}
             ${material.estimated_value ? `<div><strong>Valeur estimée:</strong> ${material.estimated_value} €</div>` : ''}
+            ${material.exit_date ? `<div><strong>Date de sortie:</strong> ${formatDate(material.exit_date)}</div>` : ''}
             ${material.notes ? `<div><strong>Notes:</strong><br>${material.notes}</div>` : ''}
             ${userProfile.role === 'admin' && material.profiles ? `
                 <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
@@ -384,6 +393,90 @@ window.viewDetails = function(id) {
 
 window.closeDetailsModal = function() {
     document.getElementById('detailsModal').style.display = 'none';
+};
+
+// Filtrer par statut
+function filterByStatus(status) {
+    currentFilter = status;
+    
+    // Mettre à jour les boutons actifs
+    document.querySelectorAll('.filter-buttons button').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    if (status === 'all') {
+        document.getElementById('filterAll').classList.add('active');
+    } else if (status === 'in_stock') {
+        document.getElementById('filterInStock').classList.add('active');
+    } else if (status === 'exited') {
+        document.getElementById('filterExited').classList.add('active');
+    }
+    
+    let filtered = allMaterials;
+    if (status === 'in_stock') {
+        filtered = allMaterials.filter(m => !m.exit_date);
+    } else if (status === 'exited') {
+        filtered = allMaterials.filter(m => m.exit_date);
+    }
+    
+    displayMaterials(filtered);
+}
+
+// Confirmer la sortie
+window.confirmExit = function(id) {
+    materialToExit = allMaterials.find(m => m.id === id);
+    if (!materialToExit) return;
+    
+    document.getElementById('exitMaterialName').textContent = materialToExit.material_name;
+    document.getElementById('exitModal').style.display = 'block';
+};
+
+window.closeExitModal = function() {
+    document.getElementById('exitModal').style.display = 'none';
+    materialToExit = null;
+};
+
+// Effectuer la sortie
+window.performExit = async function() {
+    if (!materialToExit) return;
+    
+    const { error } = await supabase
+        .from('materials')
+        .update({ 
+            exit_date: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', materialToExit.id);
+    
+    if (error) {
+        alert('Erreur lors de la sortie: ' + error.message);
+        return;
+    }
+    
+    closeExitModal();
+    await loadMaterials();
+    await updateStats();
+};
+
+// Annuler une sortie
+window.cancelExit = async function(id) {
+    if (!confirm('Voulez-vous vraiment annuler cette sortie ?')) return;
+    
+    const { error } = await supabase
+        .from('materials')
+        .update({ 
+            exit_date: null,
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', id);
+    
+    if (error) {
+        alert('Erreur: ' + error.message);
+        return;
+    }
+    
+    await loadMaterials();
+    await updateStats();
 };
 
 // Écouter les changements en temps réel
@@ -415,4 +508,3 @@ function formatDate(dateString) {
 function formatDateTime(dateString) {
     return new Date(dateString).toLocaleString('fr-FR');
 }
-
