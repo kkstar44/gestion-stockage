@@ -212,12 +212,21 @@ async function updateStats() {
     
     // Compter les clients (admin uniquement)
     if (userProfile.role === 'admin') {
-        const { count } = await supabase
+        const { count: clientCount } = await supabase
             .from('profiles')
             .select('*', { count: 'exact', head: true })
             .eq('role', 'client');
         
-        document.getElementById('totalClients').textContent = count || 0;
+        document.getElementById('totalClients').textContent = clientCount || 0;
+        
+        // Compter les admins
+        const { count: adminCount } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .eq('role', 'admin');
+        
+        document.getElementById('totalAdmins').textContent = adminCount || 0;
+        document.getElementById('adminsCard').style.display = 'flex';
     }
 }
 
@@ -652,6 +661,103 @@ window.deleteClient = async function(clientId) {
     alert('Client supprimé avec succès!');
     await openClientsListModal(); // Rafraîchir la liste
     await loadClients(); // Rafraîchir le select
+    await updateStats();
+};
+
+// ========== GESTION DES ADMINISTRATEURS ==========
+
+window.openAdminsListModal = async function() {
+    const { data: admins, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('role', 'admin')
+        .order('full_name');
+    
+    if (error) {
+        alert('Erreur chargement admins: ' + error.message);
+        return;
+    }
+    
+    const currentUserId = (await supabase.auth.getUser()).data.user?.id;
+    
+    let html = '';
+    if (!admins || admins.length === 0) {
+        html = '<p style="color: var(--text-light); text-align: center;">Aucun administrateur</p>';
+    } else {
+        html = `
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="background: var(--bg); text-align: left;">
+                        <th style="padding: 0.75rem; border-bottom: 2px solid var(--border);">Nom</th>
+                        <th style="padding: 0.75rem; border-bottom: 2px solid var(--border);">Email</th>
+                        <th style="padding: 0.75rem; border-bottom: 2px solid var(--border);">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${admins.map(admin => `
+                        <tr>
+                            <td style="padding: 0.75rem; border-bottom: 1px solid var(--border);">
+                                ${admin.full_name || '-'}
+                                ${admin.id === currentUserId ? '<span style="color: var(--primary); font-size: 0.75rem;"> (vous)</span>' : ''}
+                            </td>
+                            <td style="padding: 0.75rem; border-bottom: 1px solid var(--border);">${admin.email || '-'}</td>
+                            <td style="padding: 0.75rem; border-bottom: 1px solid var(--border);">
+                                ${admin.id === currentUserId 
+                                    ? '<span style="color: var(--text-light); font-size: 0.875rem;">-</span>' 
+                                    : `<button class="btn btn-sm btn-danger" onclick="deleteAdmin('${admin.id}')" title="Supprimer">🗑️</button>`
+                                }
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    }
+    
+    document.getElementById('adminsListContent').innerHTML = html;
+    document.getElementById('adminsListModal').style.display = 'block';
+};
+
+window.closeAdminsListModal = function() {
+    document.getElementById('adminsListModal').style.display = 'none';
+};
+
+window.deleteAdmin = async function(adminId) {
+    // Vérifier qu'on ne supprime pas soi-même
+    const currentUserId = (await supabase.auth.getUser()).data.user?.id;
+    if (adminId === currentUserId) {
+        alert('Vous ne pouvez pas supprimer votre propre compte!');
+        return;
+    }
+    
+    // Vérifier qu'il reste au moins un admin
+    const { count } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .eq('role', 'admin');
+    
+    if (count <= 1) {
+        alert('Impossible de supprimer le dernier administrateur!');
+        return;
+    }
+    
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cet administrateur ?\n\nCette action est irréversible.')) {
+        return;
+    }
+    
+    // Supprimer le profil
+    const { error: profileError } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', adminId);
+    
+    if (profileError) {
+        alert('Erreur suppression admin: ' + profileError.message);
+        return;
+    }
+    
+    alert('Administrateur supprimé avec succès!');
+    await openAdminsListModal(); // Rafraîchir la liste
     await updateStats();
 };
 

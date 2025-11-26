@@ -44,6 +44,13 @@
                     </div>
                     <button id="addClientBtn" class="btn btn-sm btn-secondary" style="margin-left: auto;" onclick="event.stopPropagation(); openClientModal();">➕</button>
                 </div>
+                <div class="stat-card" id="adminsCard" style="display: none; cursor: pointer;" onclick="openAdminsListModal()">
+                    <div class="stat-icon">🛡️</div>
+                    <div class="stat-info">
+                        <h3 id="totalAdmins">0</h3>
+                        <p>Administrateurs</p>
+                    </div>
+                </div>
             </div>
 
             <div class="controls">
@@ -279,6 +286,18 @@
                     <button type="submit" class="btn btn-primary">Enregistrer</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Modal liste des administrateurs -->
+    <div id="adminsListModal" class="modal">
+        <div class="modal-content" style="max-width: 700px;">
+            <span class="close" onclick="closeAdminsListModal()">&times;</span>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h2>🛡️ Gestion des administrateurs</h2>
+                <button class="btn btn-primary btn-sm" onclick="closeAdminsListModal(); document.getElementById('clientRole').value='admin'; updateCreateUserForm(); openClientModal();">➕ Nouvel admin</button>
+            </div>
+            <div id="adminsListContent"></div>
         </div>
     </div>
 
