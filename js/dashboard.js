@@ -721,18 +721,32 @@ window.viewHistory = async function(materialId) {
     const material = allMaterials.find(m => m.id === materialId);
     if (!material) return;
     
+    // Charger les mouvements sans jointure
     const { data: movements, error } = await supabase
         .from('movements')
-        .select(`
-            *,
-            profiles:created_by(full_name, email)
-        `)
+        .select('*')
         .eq('material_id', materialId)
         .order('created_at', { ascending: false });
     
     if (error) {
         alert('Erreur chargement historique: ' + error.message);
         return;
+    }
+    
+    // Charger les infos des créateurs séparément si nécessaire
+    let creatorsMap = {};
+    if (movements && movements.length > 0) {
+        const creatorIds = [...new Set(movements.map(m => m.created_by).filter(Boolean))];
+        if (creatorIds.length > 0) {
+            const { data: creators } = await supabase
+                .from('profiles')
+                .select('id, full_name, email')
+                .in('id', creatorIds);
+            
+            if (creators) {
+                creators.forEach(c => creatorsMap[c.id] = c);
+            }
+        }
     }
     
     let historyHTML = `
@@ -755,7 +769,9 @@ window.viewHistory = async function(materialId) {
                     </tr>
                 </thead>
                 <tbody>
-                    ${movements.map(m => `
+                    ${movements.map(m => {
+                        const creator = creatorsMap[m.created_by];
+                        return `
                         <tr>
                             <td style="padding: 0.75rem; border-bottom: 1px solid var(--border);">${formatDateTime(m.created_at)}</td>
                             <td style="padding: 0.75rem; border-bottom: 1px solid var(--border);">
@@ -765,9 +781,9 @@ window.viewHistory = async function(materialId) {
                             </td>
                             <td style="padding: 0.75rem; border-bottom: 1px solid var(--border);">${m.quantity} ${material.unit}</td>
                             <td style="padding: 0.75rem; border-bottom: 1px solid var(--border);">${m.notes || '-'}</td>
-                            <td style="padding: 0.75rem; border-bottom: 1px solid var(--border);">${m.profiles?.full_name || m.profiles?.email || '-'}</td>
+                            <td style="padding: 0.75rem; border-bottom: 1px solid var(--border);">${creator?.full_name || creator?.email || '-'}</td>
                         </tr>
-                    `).join('')}
+                    `}).join('')}
                 </tbody>
             </table>
         `;
