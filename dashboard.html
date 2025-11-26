@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Gestion de Stockage</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="dashboard">
+        <nav class="navbar">
+            <div class="nav-brand">
+                <h2>🏢 Gestion de Stockage</h2>
+            </div>
+            <div class="nav-user">
+                <span id="userName">Chargement...</span>
+                <button onclick="logout()" class="btn btn-secondary btn-sm">Déconnexion</button>
+            </div>
+        </nav>
+
+        <div class="dashboard-content">
+            <div class="stats-container">
+                <div class="stat-card">
+                    <div class="stat-icon">📦</div>
+                    <div class="stat-info">
+                        <h3 id="totalItems">0</h3>
+                        <p>Articles en stock</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-info">
+                        <h3 id="totalValue">0 €</h3>
+                        <p>Valeur totale</p>
+                    </div>
+                </div>
+                <div class="stat-card" id="clientsCard" style="display: none;">
+                    <div class="stat-icon">👥</div>
+                    <div class="stat-info">
+                        <h3 id="totalClients">0</h3>
+                        <p>Clients</p>
+                    </div>
+                    <button id="addClientBtn" class="btn btn-sm btn-secondary" style="margin-left: auto;">➕</button>
+                </div>
+            </div>
+
+            <div class="controls">
+                <div class="search-box">
+                    <input type="text" id="searchInput" placeholder="Rechercher...">
+                </div>
+                <button id="addMaterialBtn" class="btn btn-primary" style="display: none;">
+                    ➕ Ajouter une matière
+                </button>
+            </div>
+
+            <div class="materials-list" id="materialsList">
+                <p class="loading">Chargement des données...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal pour ajouter/éditer -->
+    <div id="materialModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="modalTitle">Ajouter une matière première</h2>
+            <form id="materialForm">
+                <input type="hidden" id="materialId">
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="materialName">Nom de la matière *</label>
+                        <input type="text" id="materialName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="materialType">Type *</label>
+                        <input type="text" id="materialType" required placeholder="Ex: Métal, Bois, Pierre...">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="quantity">Quantité *</label>
+                        <input type="number" id="quantity" step="0.01" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="unit">Unité *</label>
+                        <select id="unit" required>
+                            <option value="kg">Kilogrammes (kg)</option>
+                            <option value="t">Tonnes (t)</option>
+                            <option value="l">Litres (l)</option>
+                            <option value="m3">Mètres cubes (m³)</option>
+                            <option value="unités">Unités</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="storageLocation">Emplacement de stockage *</label>
+                        <input type="text" id="storageLocation" required placeholder="Ex: Entrepôt A, Zone 12">
+                    </div>
+                    <div class="form-group">
+                        <label for="receptionDate">Date de réception *</label>
+                        <input type="date" id="receptionDate" required>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="certificateNumber">N° de certificat</label>
+                        <input type="text" id="certificateNumber">
+                    </div>
+                    <div class="form-group">
+                        <label for="estimatedValue">Valeur estimée (€)</label>
+                        <input type="number" id="estimatedValue" step="0.01">
+                    </div>
+                </div>
+
+                <div class="form-group" id="clientSelectGroup" style="display: none;">
+                    <label for="clientSelect">Client *</label>
+                    <select id="clientSelect" required>
+                        <option value="">Sélectionner un client...</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="notes">Notes</label>
+                    <textarea id="notes" rows="3"></textarea>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal détails -->
+    <div id="detailsModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeDetailsModal()">&times;</span>
+            <div id="detailsContent"></div>
+        </div>
+    </div>
+
+    <!-- Modal créer client (admin) -->
+    <div id="clientModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeClientModal()">&times;</span>
+            <h2>➕ Créer un compte client</h2>
+            <form id="clientForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="clientName">Nom complet *</label>
+                        <input type="text" id="clientName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="clientCompany">Nom de l'entreprise</label>
+                        <input type="text" id="clientCompany">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="clientEmail">Email *</label>
+                        <input type="email" id="clientEmail" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="clientPassword">Mot de passe *</label>
+                        <input type="password" id="clientPassword" required minlength="6">
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeClientModal()">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Créer le compte</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal mouvement (entrée/sortie) -->
+    <div id="movementModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeMovementModal()">&times;</span>
+            <h2 id="movementModalTitle">Enregistrer un mouvement</h2>
+            <form id="movementForm">
+                <input type="hidden" id="movementMaterialId">
+                <input type="hidden" id="movementType">
+                
+                <div class="form-group">
+                    <label>Matière concernée</label>
+                    <p id="movementMaterialName" style="font-weight: bold; color: var(--primary);"></p>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="movementQuantity">Quantité *</label>
+                        <input type="number" id="movementQuantity" step="0.01" required min="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label>Unité</label>
+                        <p id="movementUnit" style="padding: 0.75rem 0;"></p>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="movementNotes">Notes / Motif</label>
+                    <textarea id="movementNotes" rows="2" placeholder="Ex: Vente client, Transfert..."></textarea>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeMovementModal()">Annuler</button>
+                    <button type="submit" class="btn btn-primary" id="movementSubmitBtn">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal historique mouvements -->
+    <div id="historyModal" class="modal">
+        <div class="modal-content" style="max-width: 900px;">
+            <span class="close" onclick="closeHistoryModal()">&times;</span>
+            <h2>📜 Historique des mouvements</h2>
+            <div id="historyContent"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script type="module" src="js/supabase.js"></script>
+    <script type="module" src="js/dashboard.js"></script>
+</body>
+</html>
