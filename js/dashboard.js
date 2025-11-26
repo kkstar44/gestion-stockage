@@ -394,7 +394,12 @@ async function handleFormSubmit(e) {
             
             // Envoyer notification email au client (admin uniquement)
             if (userProfile.role === 'admin') {
-                await sendMaterialNotification(newMaterial, materialData.client_id);
+                // Fusionner les données du formulaire avec l'ID de la nouvelle matière
+                const materialForEmail = {
+                    ...newMaterial,
+                    ...materialData
+                };
+                await sendMaterialNotification(materialForEmail, materialData.client_id);
             }
         }
     }

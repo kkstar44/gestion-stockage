@@ -8,14 +8,16 @@ const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
 // Générer le contenu du QR Code (texte avec les détails)
 function generateQRContent(material: any, client: any): string {
   const date = new Date().toLocaleDateString('fr-FR');
+  const unitPrice = material.unit_price || 0;
+  const quantity = material.quantity || 0;
   return `
-📦 ALPHA SECURITY - Nouveau dépôt
+ALPHA SECURITY - Nouveau depot
 
-Matière: ${material.material_name}
-Quantité: ${material.quantity} ${material.unit}
-Valeur: ${material.unit_price * material.quantity} €
+Matiere: ${material.material_name || 'N/A'}
+Quantite: ${quantity} ${material.unit || ''}
+Valeur: ${unitPrice * quantity} EUR
 Date: ${date}
-Client: ${client.company_name || client.full_name}
+Client: ${client.company_name || client.full_name || 'N/A'}
   `.trim();
 }
 
@@ -59,7 +61,9 @@ Deno.serve(async (req) => {
     const qrCodeUrl = generateQRCodeUrl(qrContent);
     
     const date = new Date().toLocaleDateString('fr-FR');
-    const totalValue = (material.unit_price * material.quantity).toLocaleString('fr-FR');
+    const unitPrice = material.unit_price || 0;
+    const quantity = material.quantity || 0;
+    const totalValue = (unitPrice * quantity).toLocaleString('fr-FR');
 
     // Envoyer l'email via Resend
     const emailResponse = await fetch('https://api.resend.com/emails', {
@@ -85,15 +89,15 @@ Deno.serve(async (req) => {
               <table style="width: 100%; border-collapse: collapse;">
                 <tr>
                   <td style="padding: 10px; border-bottom: 1px solid #dee2e6;"><strong>Matière</strong></td>
-                  <td style="padding: 10px; border-bottom: 1px solid #dee2e6;">${material.material_name}</td>
+                  <td style="padding: 10px; border-bottom: 1px solid #dee2e6;">${material.material_name || 'N/A'}</td>
                 </tr>
                 <tr>
                   <td style="padding: 10px; border-bottom: 1px solid #dee2e6;"><strong>Quantité</strong></td>
-                  <td style="padding: 10px; border-bottom: 1px solid #dee2e6;">${material.quantity} ${material.unit}</td>
+                  <td style="padding: 10px; border-bottom: 1px solid #dee2e6;">${quantity} ${material.unit || ''}</td>
                 </tr>
                 <tr>
                   <td style="padding: 10px; border-bottom: 1px solid #dee2e6;"><strong>Valeur unitaire</strong></td>
-                  <td style="padding: 10px; border-bottom: 1px solid #dee2e6;">${material.unit_price.toLocaleString('fr-FR')} €</td>
+                  <td style="padding: 10px; border-bottom: 1px solid #dee2e6;">${unitPrice.toLocaleString('fr-FR')} €</td>
                 </tr>
                 <tr>
                   <td style="padding: 10px; border-bottom: 1px solid #dee2e6;"><strong>Valeur totale</strong></td>
