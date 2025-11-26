@@ -48,9 +48,14 @@
                 <div class="search-box">
                     <input type="text" id="searchInput" placeholder="Rechercher...">
                 </div>
-                <button id="addMaterialBtn" class="btn btn-primary" style="display: none;">
-                    ➕ Ajouter une matière
-                </button>
+                <div class="controls-buttons">
+                    <button id="archivesBtn" class="btn btn-secondary" onclick="toggleArchives()">
+                        📁 Archives (0)
+                    </button>
+                    <button id="addMaterialBtn" class="btn btn-primary" style="display: none;">
+                        ➕ Ajouter une matière
+                    </button>
+                </div>
             </div>
 
             <div class="materials-list" id="materialsList">

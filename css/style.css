@@ -291,6 +291,12 @@ body {
     flex-wrap: wrap;
 }
 
+.controls-buttons {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
 .search-box {
     flex: 1;
     min-width: 200px;

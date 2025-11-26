@@ -89,16 +89,23 @@ async function loadMaterials() {
     displayMaterials(allMaterials);
 }
 
-// Afficher les matières
-function displayMaterials(materials) {
+// Afficher les matières (exclut celles à quantité 0)
+function displayMaterials(materials, showArchived = false) {
     const container = document.getElementById('materialsList');
     
-    if (materials.length === 0) {
-        container.innerHTML = '<p class="loading">Aucune matière première enregistrée</p>';
+    // Filtrer selon le mode (stock actif ou archives)
+    const filteredMaterials = showArchived 
+        ? materials.filter(m => m.quantity <= 0)
+        : materials.filter(m => m.quantity > 0);
+    
+    if (filteredMaterials.length === 0) {
+        container.innerHTML = showArchived 
+            ? '<p class="loading">Aucune matière épuisée</p>'
+            : '<p class="loading">Aucune matière première en stock</p>';
         return;
     }
     
-    container.innerHTML = materials.map(material => `
+    container.innerHTML = filteredMaterials.map(material => `
         <div class="material-card">
             <div class="material-info">
                 <h3>${material.material_name}</h3>
@@ -135,9 +142,6 @@ function displayMaterials(materials) {
                     📜
                 </button>
                 ${userProfile.role === 'admin' ? `
-                    <button class="btn btn-sm btn-success" onclick="openMovementModal('${material.id}', 'entree')" title="Entrée stock">
-                        📥
-                    </button>
                     <button class="btn btn-sm btn-warning" onclick="openMovementModal('${material.id}', 'sortie')" title="Sortie stock">
                         📤
                     </button>
@@ -153,16 +157,26 @@ function displayMaterials(materials) {
     `).join('');
 }
 
-// Mettre à jour les statistiques
+// Mettre à jour les statistiques (exclut les matières à quantité 0)
 async function updateStats() {
-    const totalItems = allMaterials.length;
-    const totalValue = allMaterials.reduce((sum, m) => 
+    // Filtrer uniquement les matières en stock (quantité > 0)
+    const activeMaterials = allMaterials.filter(m => m.quantity > 0);
+    const archivedCount = allMaterials.filter(m => m.quantity <= 0).length;
+    
+    const totalItems = activeMaterials.length;
+    const totalValue = activeMaterials.reduce((sum, m) => 
         sum + (parseFloat(m.estimated_value) || 0), 0
     );
     
     document.getElementById('totalItems').textContent = totalItems;
     document.getElementById('totalValue').textContent = 
         totalValue.toLocaleString('fr-FR') + ' €';
+    
+    // Mettre à jour le bouton archives s'il existe
+    const archivesBtn = document.getElementById('archivesBtn');
+    if (archivesBtn) {
+        archivesBtn.textContent = `📁 Archives (${archivedCount})`;
+    }
     
     // Compter les clients (admin uniquement)
     if (userProfile.role === 'admin') {
@@ -323,6 +337,20 @@ async function handleFormSubmit(e) {
             .from('materials')
             .insert([materialData])
             .select();
+        
+        // Enregistrer automatiquement le mouvement d'entrée
+        if (!result.error && result.data && result.data[0]) {
+            const newMaterial = result.data[0];
+            await supabase
+                .from('movements')
+                .insert({
+                    material_id: newMaterial.id,
+                    type: 'entree',
+                    quantity: newMaterial.quantity,
+                    notes: 'Dépôt initial',
+                    created_by: currentUser.id
+                });
+        }
     }
     
     if (result.error) {
@@ -341,7 +369,6 @@ async function handleFormSubmit(e) {
         await updateStats();
     }, 500);
 }
-// ← J'AI SUPPRIMÉ L'ACCOLADE EN TROP ICI
 
 // Supprimer une matière
 window.deleteMaterial = async function(id) {
@@ -795,6 +822,29 @@ window.viewHistory = async function(materialId) {
 
 window.closeHistoryModal = function() {
     document.getElementById('historyModal').style.display = 'none';
+};
+
+// ========== ARCHIVES ==========
+
+let showingArchives = false;
+
+window.toggleArchives = function() {
+    showingArchives = !showingArchives;
+    
+    const archivesBtn = document.getElementById('archivesBtn');
+    const archivedCount = allMaterials.filter(m => m.quantity <= 0).length;
+    
+    if (showingArchives) {
+        archivesBtn.textContent = '📦 Stock actif';
+        archivesBtn.classList.add('btn-warning');
+        archivesBtn.classList.remove('btn-secondary');
+        displayMaterials(allMaterials, true); // Afficher les archives
+    } else {
+        archivesBtn.textContent = `📁 Archives (${archivedCount})`;
+        archivesBtn.classList.remove('btn-warning');
+        archivesBtn.classList.add('btn-secondary');
+        displayMaterials(allMaterials, false); // Afficher le stock actif
+    }
 };
 
 // ========== UTILITAIRES ==========
