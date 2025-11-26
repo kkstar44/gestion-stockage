@@ -711,7 +711,8 @@ async function handleClientFormSubmit(e) {
             alert('Compte créé mais erreur profil: ' + profileError.message);
         } else {
             const roleLabel = role === 'admin' ? 'administrateur' : 'client';
-            alert(`Compte ${roleLabel} créé avec succès!\nUn email de confirmation a été envoyé à ${email}`);
+            // Afficher les accès pour copie
+            showCredentialsModal(roleLabel, name, email, password);
         }
     }
     
@@ -719,6 +720,53 @@ async function handleClientFormSubmit(e) {
     await loadClients();
     await updateStats();
 }
+
+// Afficher les identifiants après création
+function showCredentialsModal(roleLabel, name, email, password) {
+    const credentialsText = `
+🔐 ACCÈS ${roleLabel.toUpperCase()}
+
+Nom: ${name}
+Email: ${email}
+Mot de passe: ${password}
+
+Lien de connexion:
+https://kkstar44.github.io/gestion-stockage/
+
+⚠️ Un email de confirmation a été envoyé.
+L'utilisateur doit cliquer sur le lien dans l'email avant de pouvoir se connecter.
+    `.trim();
+    
+    const modalHTML = `
+        <div id="credentialsModal" class="modal" style="display: block;">
+            <div class="modal-content">
+                <span class="close" onclick="closeCredentialsModal()">&times;</span>
+                <h2>✅ Compte ${roleLabel} créé avec succès!</h2>
+                <p style="margin-bottom: 1rem;">Voici les identifiants à transmettre à l'utilisateur :</p>
+                <textarea id="credentialsText" readonly style="width: 100%; height: 200px; font-family: monospace; padding: 1rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; resize: none;">${credentialsText}</textarea>
+                <div class="form-actions" style="margin-top: 1rem;">
+                    <button class="btn btn-primary" onclick="copyCredentials()">📋 Copier les accès</button>
+                    <button class="btn btn-secondary" onclick="closeCredentialsModal()">Fermer</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Ajouter le modal au DOM
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+}
+
+window.copyCredentials = function() {
+    const textarea = document.getElementById('credentialsText');
+    textarea.select();
+    document.execCommand('copy');
+    alert('Accès copiés dans le presse-papier !');
+};
+
+window.closeCredentialsModal = function() {
+    const modal = document.getElementById('credentialsModal');
+    if (modal) modal.remove();
+};
 
 // ========== GESTION DES MOUVEMENTS ==========
 
