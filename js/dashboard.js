@@ -391,6 +391,11 @@ async function handleFormSubmit(e) {
                     notes: 'Dépôt initial',
                     created_by: currentUser.id
                 });
+            
+            // Envoyer notification email au client (admin uniquement)
+            if (userProfile.role === 'admin') {
+                await sendMaterialNotification(newMaterial, materialData.client_id);
+            }
         }
     }
     
@@ -1067,4 +1072,43 @@ function formatDate(dateString) {
 
 function formatDateTime(dateString) {
     return new Date(dateString).toLocaleString('fr-FR');
+}
+
+// ========== NOTIFICATION EMAIL ==========
+
+async function sendMaterialNotification(material, clientId) {
+    try {
+        // Récupérer les infos du client
+        const { data: client, error: clientError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', clientId)
+            .single();
+        
+        if (clientError || !client) {
+            console.error('Erreur récupération client:', clientError);
+            return;
+        }
+        
+        if (!client.email) {
+            console.log('Client sans email, notification non envoyée');
+            return;
+        }
+        
+        // Appeler la Edge Function
+        const { data, error } = await supabase.functions.invoke('send-material-notification', {
+            body: {
+                material: material,
+                client: client
+            }
+        });
+        
+        if (error) {
+            console.error('Erreur envoi notification:', error);
+        } else {
+            console.log('Notification envoyée:', data);
+        }
+    } catch (err) {
+        console.error('Erreur notification:', err);
+    }
 }
