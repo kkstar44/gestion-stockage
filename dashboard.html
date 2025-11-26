@@ -150,18 +150,25 @@
         </div>
     </div>
 
-    <!-- Modal créer client (admin) -->
+    <!-- Modal créer utilisateur (admin) -->
     <div id="clientModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="closeClientModal()">&times;</span>
-            <h2>➕ Créer un compte client</h2>
+            <h2 id="createUserTitle">➕ Créer un compte</h2>
             <form id="clientForm">
+                <div class="form-group">
+                    <label for="clientRole">Type de compte *</label>
+                    <select id="clientRole" required onchange="updateCreateUserForm()">
+                        <option value="client">Client</option>
+                        <option value="admin">Administrateur</option>
+                    </select>
+                </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label for="clientName">Nom complet *</label>
                         <input type="text" id="clientName" required>
                     </div>
-                    <div class="form-group">
+                    <div class="form-group" id="companyGroup">
                         <label for="clientCompany">Nom de l'entreprise</label>
                         <input type="text" id="clientCompany">
                     </div>

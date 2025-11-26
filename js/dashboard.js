@@ -90,7 +90,7 @@ async function loadMaterials() {
 }
 
 // Afficher les matières (exclut celles à quantité 0)
-function displayMaterials(materials, showArchived = false) {
+async function displayMaterials(materials, showArchived = false) {
     const container = document.getElementById('materialsList');
     
     // Filtrer selon le mode (stock actif ou archives)
@@ -105,16 +105,43 @@ function displayMaterials(materials, showArchived = false) {
         return;
     }
     
-    container.innerHTML = filteredMaterials.map(material => `
-        <div class="material-card">
+    // Pour les archives, récupérer les quantités initiales
+    let initialQuantities = {};
+    if (showArchived && filteredMaterials.length > 0) {
+        const materialIds = filteredMaterials.map(m => m.id);
+        const { data: movements } = await supabase
+            .from('movements')
+            .select('material_id, quantity')
+            .in('material_id', materialIds)
+            .eq('type', 'entree')
+            .order('created_at', { ascending: true });
+        
+        if (movements) {
+            // Prendre la première entrée (dépôt initial) pour chaque matière
+            movements.forEach(m => {
+                if (!initialQuantities[m.material_id]) {
+                    initialQuantities[m.material_id] = m.quantity;
+                }
+            });
+        }
+    }
+    
+    container.innerHTML = filteredMaterials.map(material => {
+        const displayQuantity = showArchived 
+            ? (initialQuantities[material.id] || material.quantity)
+            : material.quantity;
+        const quantityLabel = showArchived ? 'Qté initiale' : 'Quantité';
+        
+        return `
+        <div class="material-card ${showArchived ? 'archived' : ''}">
             <div class="material-info">
-                <h3>${material.material_name}</h3>
+                <h3>${material.material_name} ${showArchived ? '<span style="color: var(--text-light); font-size: 0.8em;">(épuisé)</span>' : ''}</h3>
                 <div class="material-details">
                     <div class="material-detail">
                         <strong>Type:</strong> ${material.material_type}
                     </div>
                     <div class="material-detail">
-                        <strong>Quantité:</strong> ${material.quantity} ${material.unit}
+                        <strong>${quantityLabel}:</strong> ${displayQuantity} ${material.unit}
                     </div>
                     <div class="material-detail">
                         <strong>Emplacement:</strong> ${material.storage_location}
@@ -141,7 +168,7 @@ function displayMaterials(materials, showArchived = false) {
                 <button class="btn btn-sm btn-secondary" onclick="viewHistory('${material.id}')" title="Historique">
                     📜
                 </button>
-                ${userProfile.role === 'admin' ? `
+                ${userProfile.role === 'admin' && !showArchived ? `
                     <button class="btn btn-sm btn-warning" onclick="openMovementModal('${material.id}', 'sortie')" title="Sortie stock">
                         📤
                     </button>
@@ -152,9 +179,14 @@ function displayMaterials(materials, showArchived = false) {
                         🗑️
                     </button>
                 ` : ''}
+                ${userProfile.role === 'admin' && showArchived ? `
+                    <button class="btn btn-sm btn-danger" onclick="deleteMaterial('${material.id}')" title="Supprimer définitivement">
+                        🗑️
+                    </button>
+                ` : ''}
             </div>
         </div>
-    `).join('');
+    `}).join('');
 }
 
 // Mettre à jour les statistiques (exclut les matières à quantité 0)
@@ -453,11 +485,28 @@ let allClients = [];
 
 window.openClientModal = function() {
     document.getElementById('clientForm').reset();
+    document.getElementById('clientRole').value = 'client';
+    updateCreateUserForm();
     document.getElementById('clientModal').style.display = 'block';
 };
 
 window.closeClientModal = function() {
     document.getElementById('clientModal').style.display = 'none';
+};
+
+// Mettre à jour le formulaire selon le type de compte
+window.updateCreateUserForm = function() {
+    const role = document.getElementById('clientRole').value;
+    const companyGroup = document.getElementById('companyGroup');
+    const title = document.getElementById('createUserTitle');
+    
+    if (role === 'admin') {
+        companyGroup.style.display = 'none';
+        title.textContent = '➕ Créer un compte administrateur';
+    } else {
+        companyGroup.style.display = 'block';
+        title.textContent = '➕ Créer un compte client';
+    }
 };
 
 // Liste des clients
@@ -609,14 +658,22 @@ window.deleteClient = async function(clientId) {
 async function handleClientFormSubmit(e) {
     e.preventDefault();
     
+    const role = document.getElementById('clientRole').value;
     const name = document.getElementById('clientName').value;
-    const company = document.getElementById('clientCompany').value;
+    const company = role === 'client' ? document.getElementById('clientCompany').value : '';
     const email = document.getElementById('clientEmail').value;
     const password = document.getElementById('clientPassword').value;
     
     if (password.length < 6) {
         alert('Le mot de passe doit contenir au moins 6 caractères');
         return;
+    }
+    
+    // Confirmation pour création admin
+    if (role === 'admin') {
+        if (!confirm('Vous êtes sur le point de créer un compte ADMINISTRATEUR.\nCet utilisateur aura tous les droits.\n\nContinuer ?')) {
+            return;
+        }
     }
     
     // Créer l'utilisateur via Supabase Auth
@@ -638,7 +695,7 @@ async function handleClientFormSubmit(e) {
     }
     
     if (data.user) {
-        // Créer ou mettre à jour le profil
+        // Créer ou mettre à jour le profil avec le rôle choisi
         const { error: profileError } = await supabase
             .from('profiles')
             .upsert({
@@ -646,14 +703,15 @@ async function handleClientFormSubmit(e) {
                 full_name: name,
                 company_name: company,
                 email: email,
-                role: 'client'
+                role: role
             });
         
         if (profileError) {
             console.error('Erreur profil:', profileError);
             alert('Compte créé mais erreur profil: ' + profileError.message);
         } else {
-            alert('Compte client créé avec succès!\nUn email de confirmation a été envoyé à ' + email);
+            const roleLabel = role === 'admin' ? 'administrateur' : 'client';
+            alert(`Compte ${roleLabel} créé avec succès!\nUn email de confirmation a été envoyé à ${email}`);
         }
     }
     
