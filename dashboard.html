@@ -34,13 +34,13 @@
                         <p>Valeur totale</p>
                     </div>
                 </div>
-                <div class="stat-card" id="clientsCard" style="display: none;">
+                <div class="stat-card" id="clientsCard" style="display: none; cursor: pointer;" onclick="openClientsListModal()">
                     <div class="stat-icon">👥</div>
                     <div class="stat-info">
                         <h3 id="totalClients">0</h3>
-                        <p>Clients</p>
+                        <p>Clients (cliquez pour gérer)</p>
                     </div>
-                    <button id="addClientBtn" class="btn btn-sm btn-secondary" style="margin-left: auto;">➕</button>
+                    <button id="addClientBtn" class="btn btn-sm btn-secondary" style="margin-left: auto;" onclick="event.stopPropagation(); openClientModal();">➕</button>
                 </div>
             </div>
 
@@ -223,6 +223,48 @@
             <span class="close" onclick="closeHistoryModal()">&times;</span>
             <h2>📜 Historique des mouvements</h2>
             <div id="historyContent"></div>
+        </div>
+    </div>
+
+    <!-- Modal liste des clients (admin) -->
+    <div id="clientsListModal" class="modal">
+        <div class="modal-content" style="max-width: 900px;">
+            <span class="close" onclick="closeClientsListModal()">&times;</span>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h2>👥 Gestion des clients</h2>
+                <button class="btn btn-primary btn-sm" onclick="closeClientsListModal(); openClientModal();">➕ Nouveau client</button>
+            </div>
+            <div id="clientsListContent"></div>
+        </div>
+    </div>
+
+    <!-- Modal éditer client (admin) -->
+    <div id="editClientModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeEditClientModal()">&times;</span>
+            <h2>✏️ Modifier le client</h2>
+            <form id="editClientForm">
+                <input type="hidden" id="editClientId">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="editClientName">Nom complet *</label>
+                        <input type="text" id="editClientName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="editClientCompany">Nom de l'entreprise</label>
+                        <input type="text" id="editClientCompany">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="editClientEmail">Email</label>
+                    <input type="email" id="editClientEmail" disabled style="background: var(--bg);">
+                    <small style="color: var(--text-light);">L'email ne peut pas être modifié ici</small>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeEditClientModal()">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                </div>
+            </form>
         </div>
     </div>
 

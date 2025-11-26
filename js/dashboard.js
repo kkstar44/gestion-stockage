@@ -207,12 +207,6 @@ function setupEventListeners() {
         addBtn.addEventListener('click', openAddModal);
     }
     
-    // Bouton ajouter client (admin)
-    const addClientBtn = document.getElementById('addClientBtn');
-    if (addClientBtn) {
-        addClientBtn.addEventListener('click', openClientModal);
-    }
-    
     // Recherche
     document.getElementById('searchInput').addEventListener('input', (e) => {
         const search = e.target.value.toLowerCase();
@@ -229,6 +223,9 @@ function setupEventListeners() {
     
     // Formulaire client
     document.getElementById('clientForm').addEventListener('submit', handleClientFormSubmit);
+    
+    // Formulaire édition client
+    document.getElementById('editClientForm').addEventListener('submit', handleEditClientFormSubmit);
     
     // Formulaire mouvement
     document.getElementById('movementForm').addEventListener('submit', handleMovementFormSubmit);
@@ -425,13 +422,161 @@ window.logout = async function() {
 
 // ========== GESTION DES CLIENTS (Admin) ==========
 
-function openClientModal() {
+let allClients = [];
+
+window.openClientModal = function() {
     document.getElementById('clientForm').reset();
     document.getElementById('clientModal').style.display = 'block';
-}
+};
 
 window.closeClientModal = function() {
     document.getElementById('clientModal').style.display = 'none';
+};
+
+// Liste des clients
+window.openClientsListModal = async function() {
+    const { data: clients, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('role', 'client')
+        .order('full_name');
+    
+    if (error) {
+        alert('Erreur chargement clients: ' + error.message);
+        return;
+    }
+    
+    allClients = clients || [];
+    
+    let html = '';
+    if (allClients.length === 0) {
+        html = '<p style="color: var(--text-light); text-align: center;">Aucun client enregistré</p>';
+    } else {
+        html = `
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="background: var(--bg); text-align: left;">
+                        <th style="padding: 0.75rem; border-bottom: 2px solid var(--border);">Nom</th>
+                        <th style="padding: 0.75rem; border-bottom: 2px solid var(--border);">Entreprise</th>
+                        <th style="padding: 0.75rem; border-bottom: 2px solid var(--border);">Email</th>
+                        <th style="padding: 0.75rem; border-bottom: 2px solid var(--border);">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${allClients.map(client => `
+                        <tr>
+                            <td style="padding: 0.75rem; border-bottom: 1px solid var(--border);">${client.full_name || '-'}</td>
+                            <td style="padding: 0.75rem; border-bottom: 1px solid var(--border);">${client.company_name || '-'}</td>
+                            <td style="padding: 0.75rem; border-bottom: 1px solid var(--border);">${client.email || '-'}</td>
+                            <td style="padding: 0.75rem; border-bottom: 1px solid var(--border);">
+                                <button class="btn btn-sm btn-secondary" onclick="openEditClientModal('${client.id}')" title="Modifier">✏️</button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteClient('${client.id}')" title="Supprimer">🗑️</button>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    }
+    
+    document.getElementById('clientsListContent').innerHTML = html;
+    document.getElementById('clientsListModal').style.display = 'block';
+};
+
+window.closeClientsListModal = function() {
+    document.getElementById('clientsListModal').style.display = 'none';
+};
+
+// Éditer un client
+window.openEditClientModal = function(clientId) {
+    const client = allClients.find(c => c.id === clientId);
+    if (!client) return;
+    
+    document.getElementById('editClientId').value = client.id;
+    document.getElementById('editClientName').value = client.full_name || '';
+    document.getElementById('editClientCompany').value = client.company_name || '';
+    document.getElementById('editClientEmail').value = client.email || '';
+    
+    document.getElementById('editClientModal').style.display = 'block';
+};
+
+window.closeEditClientModal = function() {
+    document.getElementById('editClientModal').style.display = 'none';
+};
+
+async function handleEditClientFormSubmit(e) {
+    e.preventDefault();
+    
+    const clientId = document.getElementById('editClientId').value;
+    const fullName = document.getElementById('editClientName').value;
+    const companyName = document.getElementById('editClientCompany').value;
+    
+    const { error } = await supabase
+        .from('profiles')
+        .update({
+            full_name: fullName,
+            company_name: companyName
+        })
+        .eq('id', clientId);
+    
+    if (error) {
+        alert('Erreur modification: ' + error.message);
+        return;
+    }
+    
+    alert('Client modifié avec succès!');
+    closeEditClientModal();
+    await openClientsListModal(); // Rafraîchir la liste
+    await loadClients(); // Rafraîchir le select
+}
+
+// Supprimer un client
+window.deleteClient = async function(clientId) {
+    const client = allClients.find(c => c.id === clientId);
+    if (!client) return;
+    
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer le client "${client.full_name || client.email}" ?\n\nAttention: Cela supprimera aussi toutes ses matières et mouvements!`)) {
+        return;
+    }
+    
+    // Supprimer les mouvements liés aux matières du client
+    const { data: materials } = await supabase
+        .from('materials')
+        .select('id')
+        .eq('client_id', clientId);
+    
+    if (materials && materials.length > 0) {
+        const materialIds = materials.map(m => m.id);
+        await supabase
+            .from('movements')
+            .delete()
+            .in('material_id', materialIds);
+    }
+    
+    // Supprimer les matières du client
+    await supabase
+        .from('materials')
+        .delete()
+        .eq('client_id', clientId);
+    
+    // Supprimer le profil
+    const { error: profileError } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', clientId);
+    
+    if (profileError) {
+        alert('Erreur suppression profil: ' + profileError.message);
+        return;
+    }
+    
+    // Supprimer l'utilisateur auth (optionnel, peut nécessiter des droits admin)
+    // Note: Ceci peut ne pas fonctionner avec la clé anon
+    
+    alert('Client supprimé avec succès!');
+    await openClientsListModal(); // Rafraîchir la liste
+    await loadClients(); // Rafraîchir le select
+    await updateStats();
 };
 
 async function handleClientFormSubmit(e) {
