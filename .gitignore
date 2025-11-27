@@ -1,0 +1,12 @@
+# Environnement
+.env
+
+# Node
+node_modules/
+
+# Screenshots de test
+screenshots/
+
+# Playwright
+test-results/
+playwright-report/
