@@ -151,7 +151,7 @@ async function displayMaterials(materials, showArchived = false) {
                     </div>
                     ${material.estimated_value ? `
                         <div class="material-detail">
-                            <strong>Valeur:</strong> ${material.estimated_value} €
+                            <strong>Valeur:</strong> ${material.estimated_value} $
                         </div>
                     ` : ''}
                     ${userProfile.role === 'admin' && material.profiles ? `
@@ -202,7 +202,7 @@ async function updateStats() {
     
     document.getElementById('totalItems').textContent = totalItems;
     document.getElementById('totalValue').textContent = 
-        totalValue.toLocaleString('fr-FR') + ' €';
+        totalValue.toLocaleString('fr-FR') + ' $';
     
     // Mettre à jour le bouton archives s'il existe
     const archivesBtn = document.getElementById('archivesBtn');
@@ -454,7 +454,7 @@ window.viewDetails = function(id) {
             <div><strong>Emplacement:</strong> ${material.storage_location}</div>
             <div><strong>Date de réception:</strong> ${formatDate(material.reception_date)}</div>
             ${material.certificate_number ? `<div><strong>N° Certificat:</strong> ${material.certificate_number}</div>` : ''}
-            ${material.estimated_value ? `<div><strong>Valeur estimée:</strong> ${material.estimated_value} €</div>` : ''}
+            ${material.estimated_value ? `<div><strong>Valeur estimée:</strong> ${material.estimated_value} $</div>` : ''}
             ${material.notes ? `<div><strong>Notes:</strong><br>${material.notes}</div>` : ''}
             ${userProfile.role === 'admin' && material.profiles ? `
                 <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
