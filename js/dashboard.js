@@ -959,6 +959,11 @@ async function handleMovementFormSubmit(e) {
         return;
     }
     
+    // Envoyer notification email pour les sorties (admin uniquement)
+    if (type === 'sortie' && userProfile.role === 'admin') {
+        await sendWithdrawalNotification(material, quantity);
+    }
+    
     closeMovementModal();
     await loadMaterials();
     await updateStats();
@@ -1115,5 +1120,44 @@ async function sendMaterialNotification(material, clientId) {
         }
     } catch (err) {
         console.error('Erreur notification:', err);
+    }
+}
+
+// Notification email pour les sorties de stock
+async function sendWithdrawalNotification(material, withdrawalQuantity) {
+    try {
+        // Récupérer les infos du client
+        const { data: client, error: clientError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', material.client_id)
+            .single();
+        
+        if (clientError || !client) {
+            console.error('Erreur récupération client:', clientError);
+            return;
+        }
+        
+        if (!client.email) {
+            console.log('Client sans email, notification non envoyée');
+            return;
+        }
+        
+        // Appeler la Edge Function
+        const { data, error } = await supabase.functions.invoke('send-withdrawal-notification', {
+            body: {
+                material: material,
+                client: client,
+                withdrawalQuantity: withdrawalQuantity
+            }
+        });
+        
+        if (error) {
+            console.error('Erreur envoi notification sortie:', error);
+        } else {
+            console.log('Notification sortie envoyée:', data);
+        }
+    } catch (err) {
+        console.error('Erreur notification sortie:', err);
     }
 }

@@ -1,23 +1,21 @@
-// Edge Function pour envoyer une notification email avec QR Code
-// lors de l'ajout d'une nouvelle matière
+// Edge Function pour envoyer une notification email lors d'une sortie de matière
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
 
-// Générer le contenu du QR Code (texte avec les détails complets)
-function generateQRContent(material: any, client: any): string {
+// Générer le contenu du QR Code pour la sortie
+function generateQRContent(material: any, client: any, withdrawalQuantity: number): string {
   const date = new Date().toLocaleDateString('fr-FR');
-  const estimatedValue = material.estimated_value || 0;
-  const quantity = material.quantity || 0;
+  const remainingQuantity = (material.quantity || 0) - withdrawalQuantity;
   return `
 ALPHA SECURITY
-Depot du ${date}
+Sortie du ${date}
 
 Matiere: ${material.material_name || 'N/A'}
 Type: ${material.material_type || 'N/A'}
-Quantite: ${quantity} ${material.unit || ''}
-Valeur estimee: ${estimatedValue} USD
+Quantite retiree: ${withdrawalQuantity} ${material.unit || ''}
+Quantite restante: ${remainingQuantity} ${material.unit || ''}
 Emplacement: ${material.storage_location || 'N/A'}
 N° Certificat: ${material.certificate_number || 'N/A'}
 Client: ${client.company_name || client.full_name || 'N/A'}
@@ -31,28 +29,21 @@ function generateQRCodeUrl(content: string): string {
 }
 
 Deno.serve(async (req) => {
-  // Vérifier la méthode
+  // Gérer CORS
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
         'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-      }
+      },
     });
   }
 
   try {
-    const { material, client } = await req.json();
+    const { material, client, withdrawalQuantity } = await req.json();
 
-    if (!material || !client) {
-      return new Response(
-        JSON.stringify({ error: 'Material and client data required' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (!client.email) {
+    if (!client?.email) {
       return new Response(
         JSON.stringify({ error: 'Client email required' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
@@ -60,12 +51,8 @@ Deno.serve(async (req) => {
     }
 
     // Générer le contenu QR et l'URL
-    const qrContent = generateQRContent(material, client);
+    const qrContent = generateQRContent(material, client, withdrawalQuantity);
     const qrCodeUrl = generateQRCodeUrl(qrContent);
-    
-    const date = new Date().toLocaleDateString('fr-FR');
-    const estimatedValue = material.estimated_value || 0;
-    const quantity = material.quantity || 0;
 
     // Envoyer l'email via Resend
     const emailResponse = await fetch('https://api.resend.com/emails', {
@@ -77,7 +64,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         from: 'Alpha Security <noreply@alpha-rdc.com>',
         to: [client.email],
-        subject: `📦 Nouveau dépôt - ${material.material_name}`,
+        subject: `📤 Sortie de stock - ${material.material_name}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
             <div style="background: #C41E3A; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0;">
@@ -86,10 +73,10 @@ Deno.serve(async (req) => {
             </div>
             
             <div style="background: #f8f9fa; padding: 30px; border: 1px solid #e9ecef; text-align: center;">
-              <h2 style="color: #C41E3A; margin-top: 0;">📦 Nouveau dépôt enregistré</h2>
+              <h2 style="color: #C41E3A; margin-top: 0;">📤 Sortie de stock enregistrée</h2>
               
               <p style="color: #333; font-size: 16px; margin-bottom: 25px;">
-                Un nouveau dépôt a été enregistré à votre nom.<br>
+                Une sortie de stock a été enregistrée sur votre compte.<br>
                 Scannez le QR Code ci-dessous pour consulter les détails.
               </p>
               
@@ -142,7 +129,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Error:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: 'Internal server error' }),
       { 
         status: 500, 
         headers: { 
